@@ -163,11 +163,11 @@ Full-stack e-commerce application with Django REST Framework backend and React f
   - Project structure explanation
 
 ### 2.10 Backend Configuration Files
-- [ ] Create `backend/.gitignore` (exclude migrations, __pycache__, .env, etc.)
-- [ ] Create `backend/manage.py` (standard Django)
-- [ ] Create `backend/requirements.txt` with pinned versions
-- [ ] Create `backend/settings/` directory structure (if using split settings)
-- [ ] Configure logging settings
+- [X] Create `backend/.gitignore` (exclude migrations, __pycache__, .env, etc.)
+- [X] Create `backend/manage.py` (standard Django)
+- [X] Create `backend/requirements.txt` with pinned versions
+- [X] Create `backend/settings/` directory structure (if using split settings)
+- [X] Configure logging settings
 
 ---
 
