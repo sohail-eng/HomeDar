@@ -134,12 +134,12 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 - [X] Configure URL patterns for all viewsets
 
 ### 2.7 Admin Interface
-- [ ] Register all models in Django admin
-- [ ] Create admin classes for better admin interface
-- [ ] Add inline editing for ProductImages in Product admin
-- [ ] Add inline editing for SubCategories in Category admin
-- [ ] Add search and filter options in admin
-- [ ] Create superuser account
+- [X] Register all models in Django admin
+- [X] Create admin classes for better admin interface
+- [X] Add inline editing for ProductImages in Product admin
+- [X] Add inline editing for SubCategories in Category admin
+- [X] Add search and filter options in admin
+- [X] Create superuser account
 
 ### 2.8 Backend Testing
 - [ ] Write unit tests for all models

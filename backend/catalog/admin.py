@@ -1,3 +1,197 @@
-from django.contrib import admin
+"""
+Django admin configuration for HomeDar catalog application.
+"""
 
-# Register your models here.
+from django.contrib import admin
+from django.utils.html import format_html
+from .models import Category, SubCategory, Product, ProductImage, ContactUs
+
+
+class SubCategoryInline(admin.TabularInline):
+    """Inline admin for SubCategory in Category admin."""
+    model = SubCategory
+    extra = 1
+    fields = ['name', 'created_at', 'updated_at']
+    readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    """Admin interface for Category model."""
+    list_display = ['name', 'subcategory_count', 'created_at', 'updated_at']
+    list_filter = ['created_at', 'updated_at']
+    search_fields = ['name']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    inlines = [SubCategoryInline]
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('id', 'name')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def subcategory_count(self, obj):
+        """Display count of subcategories."""
+        count = obj.subcategories.count()
+        return count
+    subcategory_count.short_description = 'SubCategories'
+
+
+@admin.register(SubCategory)
+class SubCategoryAdmin(admin.ModelAdmin):
+    """Admin interface for SubCategory model."""
+    list_display = ['name', 'category', 'created_at', 'updated_at']
+    list_filter = ['category', 'created_at', 'updated_at']
+    search_fields = ['name', 'category__name']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    list_select_related = ['category']
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('id', 'name', 'category')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+class ProductImageInline(admin.TabularInline):
+    """Inline admin for ProductImage in Product admin."""
+    model = ProductImage
+    extra = 1
+    fields = ['image', 'is_main', 'image_preview', 'created_at']
+    readonly_fields = ['image_preview', 'created_at']
+    
+    def image_preview(self, obj):
+        """Display image preview in admin."""
+        if obj.image:
+            return format_html(
+                '<img src="{}" style="max-height: 100px; max-width: 100px;" />',
+                obj.image.url
+            )
+        return "No image"
+    image_preview.short_description = 'Preview'
+
+
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    """Admin interface for Product model."""
+    list_display = ['title', 'sku', 'price', 'subcategory_list', 'image_count', 'created_at', 'updated_at']
+    list_filter = ['created_at', 'updated_at', 'subcategories']
+    search_fields = ['title', 'sku', 'description']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    filter_horizontal = ['subcategories']
+    inlines = [ProductImageInline]
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('id', 'title', 'sku', 'price', 'description')
+        }),
+        ('Relationships', {
+            'fields': ('subcategories',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def subcategory_list(self, obj):
+        """Display list of subcategories."""
+        subcategories = obj.subcategories.all()[:3]
+        names = [sub.name for sub in subcategories]
+        if obj.subcategories.count() > 3:
+            names.append(f"... and {obj.subcategories.count() - 3} more")
+        return ", ".join(names) if names else "None"
+    subcategory_list.short_description = 'SubCategories'
+    
+    def image_count(self, obj):
+        """Display count of images."""
+        count = obj.images.count()
+        main_count = obj.images.filter(is_main=True).count()
+        return f"{count} ({main_count} main)"
+    image_count.short_description = 'Images'
+
+
+@admin.register(ProductImage)
+class ProductImageAdmin(admin.ModelAdmin):
+    """Admin interface for ProductImage model."""
+    list_display = ['product', 'image_preview', 'is_main', 'created_at']
+    list_filter = ['is_main', 'created_at', 'product']
+    search_fields = ['product__title', 'product__sku']
+    readonly_fields = ['id', 'image_preview', 'created_at']
+    list_select_related = ['product']
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('id', 'product', 'image', 'is_main')
+        }),
+        ('Preview', {
+            'fields': ('image_preview',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at',),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def image_preview(self, obj):
+        """Display image preview in admin."""
+        if obj.image:
+            return format_html(
+                '<img src="{}" style="max-height: 200px; max-width: 200px;" />',
+                obj.image.url
+            )
+        return "No image"
+    image_preview.short_description = 'Preview'
+    
+    def get_queryset(self, request):
+        """Optimize queryset with select_related."""
+        qs = super().get_queryset(request)
+        return qs.select_related('product')
+
+
+@admin.register(ContactUs)
+class ContactUsAdmin(admin.ModelAdmin):
+    """Admin interface for ContactUs model."""
+    list_display = ['name', 'email', 'phone', 'message_preview', 'created_at']
+    list_filter = ['created_at']
+    search_fields = ['name', 'email', 'phone', 'message']
+    readonly_fields = ['id', 'created_at']
+    
+    fieldsets = (
+        ('Contact Information', {
+            'fields': ('id', 'name', 'email', 'phone')
+        }),
+        ('Message', {
+            'fields': ('message',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at',),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def message_preview(self, obj):
+        """Display message preview (first 50 characters)."""
+        if obj.message:
+            preview = obj.message[:50]
+            if len(obj.message) > 50:
+                preview += "..."
+            return preview
+        return "No message"
+    message_preview.short_description = 'Message Preview'
+    
+    def has_add_permission(self, request):
+        """Disable adding ContactUs from admin (only via API)."""
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        """Disable editing ContactUs from admin (read-only)."""
+        return False

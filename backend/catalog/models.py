@@ -4,7 +4,7 @@ Database models for HomeDar catalog application.
 
 import uuid
 from django.db import models
-from django.db.models.signals import pre_delete
+from django.db.models.signals import pre_delete, post_save
 from django.dispatch import receiver
 from django.core.validators import MinValueValidator, EmailValidator
 from django.core.exceptions import ValidationError
@@ -116,10 +116,11 @@ class ProductImage(models.Model):
 
     def clean(self):
         """Validate that at least one main image exists per product."""
-        if not self.is_main and self.pk:
+        # Only validate if the product has been saved (has a primary key)
+        if not self.is_main and self.pk and self.product.pk:
             # If setting this to False, check if it's the only main image
             main_images = ProductImage.objects.filter(
-                product=self.product,
+                product_id=self.product.pk,
                 is_main=True
             ).exclude(pk=self.pk)
             if not main_images.exists():
@@ -129,33 +130,9 @@ class ProductImage(models.Model):
                 )
 
     def save(self, *args, **kwargs):
-        """Override save to ensure at least one main image per product."""
-        # If this is a new image and no main image exists for this product, make this one main
-        if not self.pk and not self.is_main:
-            existing_main = ProductImage.objects.filter(
-                product=self.product,
-                is_main=True
-            ).exists()
-            if not existing_main:
-                self.is_main = True
-        
+        """Override save to call clean validation."""
         self.full_clean()
-        
-        # Before saving, if this is being set as main, unset all other main images
-        if self.is_main and self.pk:
-            ProductImage.objects.filter(
-                product=self.product,
-                is_main=True
-            ).exclude(pk=self.pk).update(is_main=False)
-        
         super().save(*args, **kwargs)
-        
-        # After saving, if this is main, ensure no other images are main (handles new instances)
-        if self.is_main:
-            ProductImage.objects.filter(
-                product=self.product,
-                is_main=True
-            ).exclude(pk=self.pk).update(is_main=False)
 
 
 class ContactUs(models.Model):
@@ -186,13 +163,38 @@ class ContactUs(models.Model):
         super().save(*args, **kwargs)
 
 
+@receiver(post_save, sender=ProductImage)
+def ensure_main_image_after_save(sender, instance, created, **kwargs):
+    """Ensure at least one main image exists per product after saving."""
+    if instance.product.pk:
+        # If this image is set as main, unset all other main images
+        if instance.is_main:
+            ProductImage.objects.filter(
+                product_id=instance.product.pk,
+                is_main=True
+            ).exclude(pk=instance.pk).update(is_main=False)
+        
+        # If no main image exists for this product, set the first image as main
+        main_images = ProductImage.objects.filter(
+            product_id=instance.product.pk,
+            is_main=True
+        )
+        if not main_images.exists():
+            first_image = ProductImage.objects.filter(
+                product_id=instance.product.pk
+            ).first()
+            if first_image:
+                first_image.is_main = True
+                first_image.save(update_fields=['is_main'])
+
+
 @receiver(pre_delete, sender=ProductImage)
 def ensure_main_image_on_delete(sender, instance, **kwargs):
     """Ensure at least one main image remains when deleting a main image."""
-    if instance.is_main:
+    if instance.is_main and instance.product.pk:
         # Check if there are other images for this product
         other_images = ProductImage.objects.filter(
-            product=instance.product
+            product_id=instance.product.pk
         ).exclude(pk=instance.pk)
         
         if other_images.exists():
