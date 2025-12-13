@@ -79,10 +79,10 @@ Full-stack e-commerce application with Django REST Framework backend and React f
   - Add Meta class with ordering
 
 ### 2.3 Database Migrations
-- [ ] Create initial migrations for all models
-- [ ] Run migrations to create database tables
-- [ ] Create migration files for any model changes
-- [ ] Test migrations on fresh database
+- [X] Create initial migrations for all models
+- [X] Run migrations to create database tables
+- [X] Create migration files for any model changes
+- [X] Test migrations on fresh database
 
 ### 2.4 Serializers
 - [ ] Create `CategorySerializer` (basic fields)
