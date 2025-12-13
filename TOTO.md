@@ -85,13 +85,13 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 - [X] Test migrations on fresh database
 
 ### 2.4 Serializers
-- [ ] Create `CategorySerializer` (basic fields)
-- [ ] Create `SubCategorySerializer` (include category name/id)
-- [ ] Create `ProductImageSerializer` (image URL, is_main flag)
-- [ ] Create `ProductSerializer` (all fields, nested sub-categories, nested images)
-- [ ] Create `ProductListSerializer` (optimized for list view - title, price, main image, sku)
-- [ ] Create `ProductDetailSerializer` (full product details with all images)
-- [ ] Create `ContactUsSerializer` (all fields with validation)
+- [X] Create `CategorySerializer` (basic fields)
+- [X] Create `SubCategorySerializer` (include category name/id)
+- [X] Create `ProductImageSerializer` (image URL, is_main flag)
+- [X] Create `ProductSerializer` (all fields, nested sub-categories, nested images)
+- [X] Create `ProductListSerializer` (optimized for list view - title, price, main image, sku)
+- [X] Create `ProductDetailSerializer` (full product details with all images)
+- [X] Create `ContactUsSerializer` (all fields with validation)
 
 ### 2.5 API Views & Viewsets
 - [ ] Create `CategoryViewSet` (list, retrieve)

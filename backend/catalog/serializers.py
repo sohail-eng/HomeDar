@@ -1,0 +1,151 @@
+"""
+Serializers for HomeDar catalog application.
+"""
+
+from rest_framework import serializers
+from .models import Category, SubCategory, Product, ProductImage, ContactUs
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    """Serializer for Category model with basic fields."""
+    
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class SubCategorySerializer(serializers.ModelSerializer):
+    """Serializer for SubCategory model with category information."""
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    category_id = serializers.UUIDField(source='category.id', read_only=True)
+    
+    class Meta:
+        model = SubCategory
+        fields = ['id', 'name', 'category', 'category_id', 'category_name', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ProductImageSerializer(serializers.ModelSerializer):
+    """Serializer for ProductImage model with image URL."""
+    image_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProductImage
+        fields = ['id', 'image_url', 'is_main', 'created_at']
+        read_only_fields = ['id', 'image_url', 'created_at']
+    
+    def get_image_url(self, obj):
+        """Get the full URL for the image."""
+        request = self.context.get('request')
+        if obj.image and hasattr(obj.image, 'url'):
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
+
+
+class ProductListSerializer(serializers.ModelSerializer):
+    """Optimized serializer for product list view."""
+    main_image = serializers.SerializerMethodField()
+    main_image_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Product
+        fields = ['id', 'title', 'sku', 'price', 'main_image', 'main_image_url']
+        read_only_fields = ['id']
+    
+    def get_main_image(self, obj):
+        """Get the main image object."""
+        main_image = obj.images.filter(is_main=True).first()
+        if main_image:
+            return ProductImageSerializer(main_image, context=self.context).data
+        # If no main image, return the first image
+        first_image = obj.images.first()
+        if first_image:
+            return ProductImageSerializer(first_image, context=self.context).data
+        return None
+    
+    def get_main_image_url(self, obj):
+        """Get the main image URL directly."""
+        main_image = obj.images.filter(is_main=True).first()
+        if main_image and main_image.image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(main_image.image.url)
+            return main_image.image.url
+        # If no main image, return the first image URL
+        first_image = obj.images.first()
+        if first_image and first_image.image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(first_image.image.url)
+            return first_image.image.url
+        return None
+
+
+class ProductDetailSerializer(serializers.ModelSerializer):
+    """Full product details serializer with nested relationships."""
+    subcategories = SubCategorySerializer(many=True, read_only=True)
+    images = ProductImageSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Product
+        fields = [
+            'id', 'title', 'sku', 'price', 'description',
+            'subcategories', 'images', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ProductSerializer(serializers.ModelSerializer):
+    """Product serializer with all fields and nested sub-categories and images."""
+    subcategories = SubCategorySerializer(many=True, read_only=True)
+    images = ProductImageSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Product
+        fields = [
+            'id', 'title', 'sku', 'price', 'description',
+            'subcategories', 'images', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ContactUsSerializer(serializers.ModelSerializer):
+    """Serializer for ContactUs model with validation."""
+    
+    class Meta:
+        model = ContactUs
+        fields = ['id', 'name', 'phone', 'email', 'message', 'created_at']
+        read_only_fields = ['id', 'created_at']
+    
+    def validate_email(self, value):
+        """Validate email format."""
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        
+        try:
+            validate_email(value)
+        except DjangoValidationError:
+            raise serializers.ValidationError("Enter a valid email address.")
+        return value
+    
+    def validate_name(self, value):
+        """Validate name is not empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Name cannot be empty.")
+        return value.strip()
+    
+    def validate_message(self, value):
+        """Validate message is not empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Message cannot be empty.")
+        return value.strip()
+    
+    def validate_phone(self, value):
+        """Validate phone is not empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Phone cannot be empty.")
+        return value.strip()
+
