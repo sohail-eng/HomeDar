@@ -94,16 +94,16 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 - [X] Create `ContactUsSerializer` (all fields with validation)
 
 ### 2.5 API Views & Viewsets
-- [ ] Create `CategoryViewSet` (list, retrieve)
+- [X] Create `CategoryViewSet` (list, retrieve)
   - Endpoint: `/api/categories/`
   - Support filtering and ordering
   
-- [ ] Create `SubCategoryViewSet` (list, retrieve)
+- [X] Create `SubCategoryViewSet` (list, retrieve)
   - Endpoint: `/api/subcategories/`
   - Support filtering by category
   - Support filtering and ordering
   
-- [ ] Create `ProductViewSet` (list, retrieve)
+- [X] Create `ProductViewSet` (list, retrieve)
   - Endpoint: `/api/products/`
   - Support filtering by:
     - Title (search)
@@ -115,12 +115,12 @@ Full-stack e-commerce application with Django REST Framework backend and React f
   - Support ordering by price (ascending/descending)
   - Implement pagination (page size configurable)
   
-- [ ] Create `ProductImageViewSet` (list, retrieve, update)
+- [X] Create `ProductImageViewSet` (list, retrieve, update)
   - Endpoint: `/api/product-images/`
   - Support updating is_main flag
   - Ensure only one main image per product
   
-- [ ] Create `ContactUsViewSet` (create only)
+- [X] Create `ContactUsViewSet` (create only)
   - Endpoint: `/api/contact-us/`
   - Only allow POST requests
   - Validate all fields
