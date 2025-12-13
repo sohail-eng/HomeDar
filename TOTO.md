@@ -127,11 +127,11 @@ Full-stack e-commerce application with Django REST Framework backend and React f
   - Send confirmation email (optional, future enhancement)
 
 ### 2.6 URL Configuration
-- [ ] Set up main `urls.py` in project root
-- [ ] Configure API routes using Django REST Framework router
-- [ ] Set up media files serving in development
-- [ ] Add API documentation endpoint (using drf-yasg or similar)
-- [ ] Configure URL patterns for all viewsets
+- [X] Set up main `urls.py` in project root
+- [X] Configure API routes using Django REST Framework router
+- [X] Set up media files serving in development
+- [X] Add API documentation endpoint (using drf-yasg or similar)
+- [X] Configure URL patterns for all viewsets
 
 ### 2.7 Admin Interface
 - [ ] Register all models in Django admin
