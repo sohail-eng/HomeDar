@@ -37,42 +37,42 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 ## Phase 2: Backend Development (Django REST Framework)
 
 ### 2.1 Django Project Initialization
-- [ ] Create Django project in `backend/` directory
-- [ ] Install Django and Django REST Framework
-- [ ] Create `requirements.txt` with all dependencies
-- [ ] Set up Django settings for development and production
-- [ ] Configure database settings (SQLite default, PostgreSQL if credentials provided)
-- [ ] Set up environment-based configuration using `python-decouple` or `django-environ`
-- [ ] Configure CORS settings for frontend communication
-- [ ] Set up static files and media files configuration
-- [ ] Create `.env` file handling for database credentials
+- [X] Create Django project in `backend/` directory
+- [X] Install Django and Django REST Framework
+- [X] Create `requirements.txt` with all dependencies
+- [X] Set up Django settings for development and production
+- [X] Configure database settings (SQLite default, PostgreSQL if credentials provided)
+- [X] Set up environment-based configuration using `python-decouple` or `django-environ`
+- [X] Configure CORS settings for frontend communication
+- [X] Set up static files and media files configuration
+- [X] Create `.env` file handling for database credentials
 
 ### 2.2 Database Models
-- [ ] Create `Category` model
+- [X] Create `Category` model
   - Fields: id (UUID4, Primary Key), name, created_at, updated_at
   - Add string representation
   - Add Meta class with ordering
   
-- [ ] Create `SubCategory` model
+- [X] Create `SubCategory` model
   - Fields: id (UUID4, Primary Key), name, category (ForeignKey to Category), created_at, updated_at
   - Add string representation
   - Add Meta class with ordering
   - Ensure one sub-category belongs to one category
   
-- [ ] Create `Product` model
+- [X] Create `Product` model
   - Fields: id (UUID4, Primary Key), title, sku (unique), price, description, created_at, updated_at
   - Add ManyToMany relationship with SubCategory
   - Add string representation
   - Add Meta class with ordering
   - Add validation for price (must be positive)
   
-- [ ] Create `ProductImage` model
+- [X] Create `ProductImage` model
   - Fields: id (UUID4, Primary Key), product (ForeignKey to Product), image (ImageField), is_main (BooleanField, default=False), created_at
   - Add validation to ensure at least one main image per product
   - Add string representation
   - Add Meta class with ordering
   
-- [ ] Create `ContactUs` model
+- [X] Create `ContactUs` model
   - Fields: id (UUID4, Primary Key), name, phone, email, message, created_at
   - Add email validation
   - Add string representation
