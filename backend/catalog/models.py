@@ -3,6 +3,7 @@ Database models for HomeDar catalog application.
 """
 
 import uuid
+from decimal import Decimal
 from django.db import models
 from django.db.models.signals import pre_delete, post_save
 from django.dispatch import receiver
@@ -61,7 +62,7 @@ class Product(TimeStampedModel):
     price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        validators=[MinValueValidator(0.01)]  # Price must be positive
+        validators=[MinValueValidator(Decimal('0.01'))]  # Price must be positive
     )
     description = models.TextField(blank=True)
     subcategories = models.ManyToManyField(

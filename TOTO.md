@@ -142,14 +142,14 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 - [X] Create superuser account
 
 ### 2.8 Backend Testing
-- [ ] Write unit tests for all models
-- [ ] Write unit tests for all serializers
-- [ ] Write API endpoint tests for CategoryViewSet
-- [ ] Write API endpoint tests for SubCategoryViewSet
-- [ ] Write API endpoint tests for ProductViewSet (all filters, search, pagination)
-- [ ] Write API endpoint tests for ContactUsViewSet
-- [ ] Write tests for database constraints (unique SKU, one main image per product)
-- [ ] Test environment-based database configuration
+- [X] Write unit tests for all models
+- [X] Write unit tests for all serializers
+- [X] Write API endpoint tests for CategoryViewSet
+- [X] Write API endpoint tests for SubCategoryViewSet
+- [X] Write API endpoint tests for ProductViewSet (all filters, search, pagination)
+- [X] Write API endpoint tests for ContactUsViewSet
+- [X] Write tests for database constraints (unique SKU, one main image per product)
+- [X] Test environment-based database configuration
 
 ### 2.9 Backend Documentation
 - [ ] Create `backend/README.md` with:
