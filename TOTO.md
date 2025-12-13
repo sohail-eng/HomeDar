@@ -152,7 +152,7 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 - [X] Test environment-based database configuration
 
 ### 2.9 Backend Documentation
-- [ ] Create `backend/README.md` with:
+- [X] Create `backend/README.md` with:
   - Installation instructions
   - Environment setup
   - Database configuration (SQLite and PostgreSQL)
