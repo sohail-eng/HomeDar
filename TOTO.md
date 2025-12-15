@@ -190,19 +190,19 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 - [X] Create theme provider wrapper
 
 ### 3.3 Reusable Components
-- [ ] Create `components/common/` directory structure
-- [ ] Create `Button` component (reusable, theme-based)
-- [ ] Create `Input` component (text, email, phone, textarea)
-- [ ] Create `Card` component (for product cards)
-- [ ] Create `LoadingSpinner` component
-- [ ] Create `ErrorMessage` component
-- [ ] Create `Pagination` component
-- [ ] Create `ImageCarousel` component (for product images with dots)
-- [ ] Create `ScrollableContainer` component (for categories)
-- [ ] Create `FilterDropdown` component
-- [ ] Create `SearchBar` component
-- [ ] Create `Select` component (for multi-select)
-- [ ] Create `Modal` component (if needed)
+- [X] Create `components/common/` directory structure
+- [X] Create `Button` component (reusable, theme-based)
+- [X] Create `Input` component (text, email, phone, textarea)
+- [X] Create `Card` component (for product cards)
+- [X] Create `LoadingSpinner` component
+- [X] Create `ErrorMessage` component
+- [X] Create `Pagination` component
+- [X] Create `ImageCarousel` component (for product images with dots)
+- [X] Create `ScrollableContainer` component (for categories)
+- [X] Create `FilterDropdown` component
+- [X] Create `SearchBar` component
+- [X] Create `Select` component (for multi-select)
+- [X] Create `Modal` component (if needed)
 
 ### 3.4 Layout Components
 - [ ] Create `Header` component
