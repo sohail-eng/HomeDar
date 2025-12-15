@@ -237,40 +237,40 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 ### 3.7 Pages Development
 
 #### 3.7.1 Product List Page (Homepage)
-- [ ] Create `pages/ProductList.js` component
-- [ ] Implement product listing display (card grid layout)
-- [ ] Implement category header (horizontal scrollable)
+- [X] Create `pages/ProductList.js` component
+- [X] Implement product listing display (card grid layout)
+- [X] Implement category header (horizontal scrollable)
   - Fetch categories from backend
   - Make it scrollable (drag and click buttons)
   - Responsive design (hide overflow, show scroll buttons on mobile/desktop)
   - Active category highlighting
   
-- [ ] Implement sub-category dropdown
+- [X] Implement sub-category dropdown
   - Show on category click
   - Multi-select functionality
   - Display selected sub-categories
   - Close dropdown on outside click
   
-- [ ] Implement filters
+- [X] Implement filters
   - Title filter input
   - SKU filter input
   - Price range filter (min/max inputs)
   - Date range filter (from/to date pickers)
   - Sort by price (ascending/descending dropdown)
   
-- [ ] Implement search functionality
+- [X] Implement search functionality
   - Search input field
   - Search by title
   - Debounce search input
   - Clear search functionality
   
-- [ ] Implement pagination
+- [X] Implement pagination
   - Page number display
   - Previous/Next buttons
   - Page size selector (optional)
   - Display current page and total pages
   
-- [ ] Implement product cards
+- [X] Implement product cards
   - Display main product image
   - Display product title
   - Display product price
@@ -278,7 +278,7 @@ Full-stack e-commerce application with Django REST Framework backend and React f
   - Responsive grid layout (adjust columns based on screen size)
   - Loading skeleton while fetching
   
-- [ ] Implement filter combination logic
+- [X] Implement filter combination logic
   - Apply all filters together
   - Reset filters functionality
   - Update URL query parameters (optional, for shareable links)
