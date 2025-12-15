@@ -205,18 +205,18 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 - [X] Create `Modal` component (if needed)
 
 ### 3.4 Layout Components
-- [ ] Create `Header` component
+- [X] Create `Header` component
   - Add example text/logo
   - Make it responsive
   - Add navigation links (if needed)
   
-- [ ] Create `Footer` component
+- [X] Create `Footer` component
   - Add example text/information
   - Add "Contact Us" link
   - Make it responsive
   - Style consistently with theme
 
-- [ ] Create `Layout` component (wraps Header, Footer, and page content)
+- [X] Create `Layout` component (wraps Header, Footer, and page content)
 
 ### 3.5 API Service Layer
 - [ ] Create `services/api.js` or `services/api.ts` for API configuration

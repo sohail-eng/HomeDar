@@ -1,11 +1,14 @@
 import Header from './Header'
 import Footer from './Footer'
 
+/**
+ * Layout component that wraps Header, Footer, and page content
+ */
 function Layout({ children }) {
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="min-h-screen flex flex-col bg-neutral-50">
       <Header />
-      <main style={{ flex: 1 }}>
+      <main className="flex-1 container-custom py-8">
         {children}
       </main>
       <Footer />
@@ -14,4 +17,3 @@ function Layout({ children }) {
 }
 
 export default Layout
-
