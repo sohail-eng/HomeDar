@@ -219,13 +219,13 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 - [X] Create `Layout` component (wraps Header, Footer, and page content)
 
 ### 3.5 API Service Layer
-- [ ] Create `services/api.js` or `services/api.ts` for API configuration
-- [ ] Create `services/categoryService.js` (getCategories)
-- [ ] Create `services/subCategoryService.js` (getSubCategories, getSubCategoriesByCategory)
-- [ ] Create `services/productService.js` (getProducts, getProductById, with filters, search, pagination)
-- [ ] Create `services/contactService.js` (submitContactForm)
-- [ ] Add error handling for all API calls
-- [ ] Add loading states management
+- [X] Create `services/api.js` or `services/api.ts` for API configuration
+- [X] Create `services/categoryService.js` (getCategories)
+- [X] Create `services/subCategoryService.js` (getSubCategories, getSubCategoriesByCategory)
+- [X] Create `services/productService.js` (getProducts, getProductById, with filters, search, pagination)
+- [X] Create `services/contactService.js` (submitContactForm)
+- [X] Add error handling for all API calls
+- [X] Add loading states management
 
 ### 3.6 State Management
 - [ ] Set up state management (Context API, Redux, or Zustand)
