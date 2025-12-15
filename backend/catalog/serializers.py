@@ -7,12 +7,24 @@ from .models import Category, SubCategory, Product, ProductImage, ContactUs
 
 
 class CategorySerializer(serializers.ModelSerializer):
-    """Serializer for Category model with basic fields."""
+    """Serializer for Category model with basic fields and subcategories."""
+    subcategories = serializers.SerializerMethodField()
     
     class Meta:
         model = Category
-        fields = ['id', 'name', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'subcategories', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_subcategories(self, obj):
+        """Get list of subcategories for this category."""
+        subcategories = obj.subcategories.all()
+        return [
+            {
+                'id': str(sub.id),
+                'name': sub.name,
+            }
+            for sub in subcategories
+        ]
 
 
 class SubCategorySerializer(serializers.ModelSerializer):

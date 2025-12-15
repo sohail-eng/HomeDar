@@ -25,6 +25,7 @@ import { API_ENDPOINTS, DEFAULT_PAGE_SIZE } from '../utils/constants'
  */
 export const getProducts = async (params = {}) => {
   try {
+    console.log('getProducts called with params:', params)
     // Build query parameters
     const queryParams = {
       page: params.page || 1,
@@ -39,7 +40,10 @@ export const getProducts = async (params = {}) => {
       }
     })
     
+    console.log('getProducts final queryParams:', queryParams)
+    console.log('getProducts API endpoint:', API_ENDPOINTS.PRODUCTS)
     const response = await api.get(API_ENDPOINTS.PRODUCTS, { params: queryParams })
+    console.log('getProducts response:', response.data)
     return {
       success: true,
       data: response.data.results || response.data,
@@ -111,28 +115,10 @@ export const filterProductsByPrice = async (minPrice, maxPrice, additionalParams
   })
 }
 
-/**
- * Filter products by subcategories
- * @param {Array<string>} subcategoryIds - Array of subcategory UUIDs
- * @param {Object} additionalParams - Additional query parameters
- * @returns {Promise} Promise that resolves to products data
- */
-export const filterProductsBySubcategories = async (subcategoryIds, additionalParams = {}) => {
-  if (!Array.isArray(subcategoryIds) || subcategoryIds.length === 0) {
-    return getProducts(additionalParams)
-  }
-  
-  return getProducts({
-    subcategories: subcategoryIds.join(','),
-    ...additionalParams,
-  })
-}
-
 export default {
   getProducts,
   getProductById,
   searchProducts,
   filterProductsByPrice,
-  filterProductsBySubcategories,
 }
 

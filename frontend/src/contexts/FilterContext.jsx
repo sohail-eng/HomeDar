@@ -63,24 +63,6 @@ export const FilterProvider = ({ children }) => {
     })
   }, [])
 
-  // Add subcategory to filter
-  const addSubcategory = useCallback((subcategoryId) => {
-    setFilters((prev) => ({
-      ...prev,
-      subcategories: [...prev.subcategories, subcategoryId].filter(
-        (id, index, self) => self.indexOf(id) === index
-      ),
-    }))
-  }, [])
-
-  // Remove subcategory from filter
-  const removeSubcategory = useCallback((subcategoryId) => {
-    setFilters((prev) => ({
-      ...prev,
-      subcategories: prev.subcategories.filter((id) => id !== subcategoryId),
-    }))
-  }, [])
-
   // Toggle subcategory in filter
   const toggleSubcategory = useCallback((subcategoryId) => {
     setFilters((prev) => {
@@ -126,8 +108,6 @@ export const FilterProvider = ({ children }) => {
     updateFilter,
     updateFilters,
     resetFilters,
-    addSubcategory,
-    removeSubcategory,
     toggleSubcategory,
     clearSubcategories,
     getActiveFiltersCount,

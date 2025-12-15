@@ -61,7 +61,11 @@ api.interceptors.response.use(
       }
     } else if (error.request) {
       // Request was made but no response received
-      console.error('Network Error: No response from server')
+      console.error('Network Error: No response from server', error.message)
+      // Check if it's a CORS error
+      if (error.message && error.message.includes('CORS')) {
+        console.error('CORS Error: Make sure the backend CORS settings allow requests from the frontend origin')
+      }
     } else {
       // Error in request setup
       console.error('Request Error:', error.message)

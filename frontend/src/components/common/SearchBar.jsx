@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import PropTypes from 'prop-types'
 
 /**
@@ -10,32 +10,49 @@ function SearchBar({
   debounceMs = 300,
   className = '',
   showClearButton = true,
+  value = '', // Controlled value from parent
 }) {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [debounceTimer, setDebounceTimer] = useState(null)
+  const [searchTerm, setSearchTerm] = useState(value || '')
+  const debounceTimerRef = useRef(null)
+  
+  // Sync with external value
+  useEffect(() => {
+    if (value !== undefined && value !== searchTerm) {
+      setSearchTerm(value)
+    }
+  }, [value])
   
   const handleChange = (e) => {
     const value = e.target.value
     setSearchTerm(value)
     
-    if (debounceTimer) {
-      clearTimeout(debounceTimer)
+    // Clear previous timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
     }
     
-    const timer = setTimeout(() => {
+    // Debounce the search
+    debounceTimerRef.current = setTimeout(() => {
       onSearch(value)
     }, debounceMs)
-    
-    setDebounceTimer(timer)
   }
   
   const handleClear = () => {
     setSearchTerm('')
-    onSearch('')
-    if (debounceTimer) {
-      clearTimeout(debounceTimer)
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
     }
+    onSearch('')
   }
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, [])
   
   return (
     <div className={`relative ${className}`}>
@@ -85,6 +102,7 @@ SearchBar.propTypes = {
   debounceMs: PropTypes.number,
   className: PropTypes.string,
   showClearButton: PropTypes.bool,
+  value: PropTypes.string,
 }
 
 export default SearchBar

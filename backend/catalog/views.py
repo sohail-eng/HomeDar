@@ -26,7 +26,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     Provides list and retrieve actions.
     Endpoint: /api/categories/
     """
-    queryset = Category.objects.all()
+    queryset = Category.objects.prefetch_related('subcategories').all()
     serializer_class = CategorySerializer
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['name']
@@ -58,7 +58,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = Product.objects.prefetch_related('subcategories', 'images').all()
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    search_fields = ['title', 'description']
+    search_fields = ['title', 'description']  # DRF SearchFilter is case-insensitive by default
     ordering_fields = ['price', 'created_at', 'updated_at', 'title']
     ordering = ['-created_at']  # Default ordering: newest first
     
@@ -80,10 +80,10 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         """
         queryset = super().get_queryset()
         
-        # Filter by SKU (exact match)
+        # Filter by SKU (case-insensitive partial match)
         sku = self.request.query_params.get('sku', None)
         if sku:
-            queryset = queryset.filter(sku=sku)
+            queryset = queryset.filter(sku__icontains=sku)
         
         # Filter by price range
         min_price = self.request.query_params.get('min_price', None)

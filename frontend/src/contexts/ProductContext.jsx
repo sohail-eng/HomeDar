@@ -38,44 +38,61 @@ export const ProductProvider = ({ children }) => {
   })
 
   // Fetch products with current filters
-  const fetchProducts = useCallback(async (page = 1, additionalFilters = {}) => {
+  const fetchProducts = useCallback(async (page = 1, additionalFilters = null) => {
+    console.log('fetchProducts called with:', { page, additionalFilters, filters })
     setLoading(true)
     setError(null)
 
     try {
+      // Use additionalFilters if provided
+      // null = use context filters
+      // {} = no filters (for initial load)
+      // object with values = use those filters
       const params = {
         page,
         page_size: pagination.pageSize,
-        ...filters,
-        ...additionalFilters,
       }
-
-      // Clean up empty values
-      Object.keys(params).forEach((key) => {
-        if (params[key] === '' || params[key] === null || params[key] === undefined) {
-          delete params[key]
-        }
-      })
+      
+      // Add filters based on additionalFilters
+      if (additionalFilters === null) {
+        // Use context filters
+        Object.assign(params, filters)
+      } else if (additionalFilters && typeof additionalFilters === 'object') {
+        // Use provided filters (even if empty object)
+        Object.assign(params, additionalFilters)
+      }
 
       // Handle subcategories array
       if (params.subcategories && Array.isArray(params.subcategories) && params.subcategories.length > 0) {
         params.subcategories = params.subcategories.join(',')
-      } else if (params.subcategories && !Array.isArray(params.subcategories)) {
+      } else if (params.subcategories && typeof params.subcategories === 'string' && params.subcategories.trim() !== '') {
+        // Already a string, keep it
+      } else {
         delete params.subcategories
       }
+
+      // Clean up empty values (including whitespace-only strings)
+      Object.keys(params).forEach((key) => {
+        const value = params[key]
+        if (value === '' || value === null || value === undefined || 
+            (typeof value === 'string' && value.trim() === '')) {
+          delete params[key]
+        }
+      })
 
       const result = await getProducts(params)
 
       if (result.success) {
         setProducts(result.data || [])
-        setPagination({
+        setPagination((prev) => ({
+          ...prev,
           page: result.page || page,
-          pageSize: result.pageSize || pagination.pageSize,
+          pageSize: result.pageSize || prev.pageSize,
           totalPages: result.totalPages || 0,
           count: result.count || 0,
           next: result.next,
           previous: result.previous,
-        })
+        }))
         setError(null)
       } else {
         setError(result.error)
