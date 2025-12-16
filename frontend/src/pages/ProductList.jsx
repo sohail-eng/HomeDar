@@ -326,9 +326,79 @@ function ProductList() {
   const expandedCategory = expandedCategoryId ? categories.find(c => c.id === expandedCategoryId) : null
   
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
+      {/* Categories Header - Horizontal Scrollable */}
+      <div className="bg-white rounded-lg shadow-sm p-3" style={{ position: 'relative', overflow: 'visible' }}>
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold text-neutral-700 whitespace-nowrap">Categories</h2>
+          {categoriesLoading ? (
+            <LoadingSpinner size="sm" />
+          ) : (
+            <div className="flex-1 min-w-0" style={{ position: 'relative', overflow: 'visible' }}>
+              <ScrollableContainer showScrollButtons={true}>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      selectCategory(null)
+                      clearSubcategories()
+                    }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                      !selectedCategoryId
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {categories.map((category) => (
+                    <div 
+                      key={category.id} 
+                      className="relative inline-block"
+                      ref={(el) => {
+                        categoryRefs.current[category.id] = el
+                      }}
+                    >
+                      <button
+                        ref={(el) => {
+                          categoryButtonRefs.current[category.id] = el
+                        }}
+                        onClick={() => {
+                          handleCategoryClick(category.id)
+                          if (category.subcategories && category.subcategories.length > 0) {
+                            toggleCategoryExpansion(category.id)
+                          }
+                        }}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-2 ${
+                          selectedCategoryId === category.id
+                            ? 'bg-primary-600 text-white'
+                            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                        }`}
+                      >
+                        {category.name}
+                        {category.subcategories && category.subcategories.length > 0 && (
+                          <svg
+                            className={`w-4 h-4 transition-transform ${
+                              expandedCategories.has(category.id) ? 'rotate-180' : ''
+                            }`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </ScrollableContainer>
+            </div>
+          )}
+        </div>
+      </div>
+      
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h1 className="text-3xl font-bold text-neutral-900">Products</h1>
           <p className="text-neutral-600 mt-1">
@@ -425,76 +495,6 @@ function ProductList() {
             </Button>
           )}
         </div>
-      </div>
-      
-      {/* Categories Header - Horizontal Scrollable */}
-      <div className="bg-white rounded-lg shadow-sm p-4" style={{ position: 'relative', overflow: 'visible' }}>
-        <h2 className="text-sm font-semibold text-neutral-700 mb-3">Categories</h2>
-        {categoriesLoading ? (
-          <LoadingSpinner size="sm" />
-        ) : (
-          <div className="space-y-2" style={{ position: 'relative', overflow: 'visible' }}>
-            <div style={{ position: 'relative', overflow: 'visible' }}>
-              <ScrollableContainer showScrollButtons={true}>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      selectCategory(null)
-                      clearSubcategories()
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                      !selectedCategoryId
-                        ? 'bg-primary-600 text-white'
-                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                    }`}
-                  >
-                    All
-                  </button>
-                  {categories.map((category) => (
-                    <div 
-                      key={category.id} 
-                      className="relative inline-block"
-                      ref={(el) => {
-                        categoryRefs.current[category.id] = el
-                      }}
-                    >
-                      <button
-                        ref={(el) => {
-                          categoryButtonRefs.current[category.id] = el
-                        }}
-                        onClick={() => {
-                          handleCategoryClick(category.id)
-                          if (category.subcategories && category.subcategories.length > 0) {
-                            toggleCategoryExpansion(category.id)
-                          }
-                        }}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-2 ${
-                          selectedCategoryId === category.id
-                            ? 'bg-primary-600 text-white'
-                            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                        }`}
-                      >
-                        {category.name}
-                        {category.subcategories && category.subcategories.length > 0 && (
-                          <svg
-                            className={`w-4 h-4 transition-transform ${
-                              expandedCategories.has(category.id) ? 'rotate-180' : ''
-                            }`}
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </ScrollableContainer>
-            </div>
-          </div>
-        )}
       </div>
       
       {/* Subcategories Dropdown - Rendered outside scrollable container using fixed positioning */}
