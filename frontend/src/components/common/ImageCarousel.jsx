@@ -12,12 +12,16 @@ function ImageCarousel({
   showArrows = true,
   enableSwipe = true,
   className = '',
+  enableLightbox = true,
 }) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const [startX, setStartX] = useState(0)
   const [currentX, setCurrentX] = useState(0)
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
+  const [lightboxIndex, setLightboxIndex] = useState(0)
   const carouselRef = useRef(null)
+  const lightboxRef = useRef(null)
   
   useEffect(() => {
     if (!autoPlay || images.length <= 1) return
@@ -113,20 +117,99 @@ function ImageCarousel({
     const handleKeyDown = (e) => {
       if (images.length <= 1) return
       
-      if (e.key === 'ArrowLeft') {
-        goToPrevious()
-      } else if (e.key === 'ArrowRight') {
-        goToNext()
+      if (isLightboxOpen) {
+        // Lightbox keyboard navigation
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault()
+          setLightboxIndex((prev) => (prev - 1 + images.length) % images.length)
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault()
+          setLightboxIndex((prev) => (prev + 1) % images.length)
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          setIsLightboxOpen(false)
+        }
+      } else {
+        // Carousel keyboard navigation
+        if (e.key === 'ArrowLeft') {
+          goToPrevious()
+        } else if (e.key === 'ArrowRight') {
+          goToNext()
+        }
       }
     }
     
-    if (carouselRef.current) {
-      carouselRef.current.focus()
+    if (isLightboxOpen || carouselRef.current) {
+      window.addEventListener('keydown', handleKeyDown)
+      return () => window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [images.length, isLightboxOpen])
+  
+  // Handle image click to open lightbox
+  const handleImageClick = (e) => {
+    e.stopPropagation()
+    if (enableLightbox && !isDragging) {
+      setLightboxIndex(currentIndex)
+      setIsLightboxOpen(true)
+    }
+  }
+  
+  // Lightbox navigation
+  const goToLightboxPrevious = () => {
+    setLightboxIndex((prev) => (prev - 1 + images.length) % images.length)
+  }
+  
+  const goToLightboxNext = () => {
+    setLightboxIndex((prev) => (prev + 1) % images.length)
+  }
+  
+  // Lightbox swipe handlers
+  const [lightboxDragging, setLightboxDragging] = useState(false)
+  const [lightboxStartX, setLightboxStartX] = useState(0)
+  const [lightboxCurrentX, setLightboxCurrentX] = useState(0)
+  
+  const handleLightboxStart = (clientX) => {
+    setLightboxDragging(true)
+    setLightboxStartX(clientX)
+    setLightboxCurrentX(clientX)
+  }
+  
+  const handleLightboxMove = (clientX) => {
+    if (!lightboxDragging) return
+    setLightboxCurrentX(clientX)
+  }
+  
+  const handleLightboxEnd = () => {
+    if (!lightboxDragging) return
+    
+    const diff = lightboxStartX - lightboxCurrentX
+    const threshold = 50
+    
+    if (Math.abs(diff) > threshold) {
+      if (diff > 0) {
+        goToLightboxNext()
+      } else {
+        goToLightboxPrevious()
+      }
     }
     
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [images.length])
+    setLightboxDragging(false)
+    setLightboxStartX(0)
+    setLightboxCurrentX(0)
+  }
+  
+  // Prevent body scroll when lightbox is open
+  useEffect(() => {
+    if (isLightboxOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+    
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [isLightboxOpen])
   
   if (!images || images.length === 0) {
     return (
@@ -137,6 +220,11 @@ function ImageCarousel({
   }
   
   const dragOffset = isDragging ? currentX - startX : 0
+  const slideWidthPercent = 100 / images.length
+  const translateXPercent = -currentIndex * slideWidthPercent
+  const dragOffsetPercent = carouselRef.current 
+    ? (dragOffset / carouselRef.current.offsetWidth) * 100 
+    : 0
   
   return (
     <div className={`relative w-full ${className}`}>
@@ -156,19 +244,32 @@ function ImageCarousel({
         <div
           className="flex h-full transition-transform duration-300 ease-out"
           style={{
-            transform: `translateX(${-currentIndex * 100 + (dragOffset / (carouselRef.current?.offsetWidth || 1)) * 100}%)`,
+            transform: `translateX(calc(${translateXPercent}% + ${dragOffsetPercent}%))`,
+            width: `${images.length * 100}%`,
           }}
         >
           {images.map((image, index) => (
             <div
               key={index}
-              className="min-w-full h-full flex-shrink-0"
+              className="h-full flex-shrink-0"
+              style={{ 
+                flexBasis: `${100 / images.length}%`,
+                width: `${100 / images.length}%`,
+                minWidth: `${100 / images.length}%`,
+                maxWidth: `${100 / images.length}%`,
+              }}
             >
               <img
                 src={image.url || image}
                 alt={image.alt || `Image ${index + 1}`}
-                className="w-full h-full object-cover"
+                className={`w-full h-full object-cover ${enableLightbox ? 'cursor-zoom-in' : ''}`}
                 draggable={false}
+                onClick={enableLightbox ? handleImageClick : undefined}
+                onMouseDown={(e) => {
+                  if (enableLightbox) {
+                    e.stopPropagation()
+                  }
+                }}
                 onError={(e) => {
                   e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23e5e5e5" width="400" height="300"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E'
                 }}
@@ -217,6 +318,114 @@ function ImageCarousel({
           ))}
         </div>
       )}
+      
+      {/* Full-screen Lightbox */}
+      {isLightboxOpen && (
+        <div
+          ref={lightboxRef}
+          className="fixed inset-0 z-[9999] bg-neutral-900 bg-opacity-95 flex items-center justify-center"
+          onClick={(e) => {
+            if (e.target === lightboxRef.current) {
+              setIsLightboxOpen(false)
+            }
+          }}
+          onMouseDown={(e) => {
+            if (e.target === lightboxRef.current || e.target.tagName === 'IMG') {
+              handleLightboxStart(e.clientX)
+            }
+          }}
+          onMouseMove={(e) => {
+            if (lightboxDragging) {
+              handleLightboxMove(e.clientX)
+            }
+          }}
+          onMouseUp={handleLightboxEnd}
+          onMouseLeave={handleLightboxEnd}
+          onTouchStart={(e) => {
+            if (e.target === lightboxRef.current || e.target.tagName === 'IMG') {
+              handleLightboxStart(e.touches[0].clientX)
+            }
+          }}
+          onTouchMove={(e) => {
+            if (lightboxDragging) {
+              handleLightboxMove(e.touches[0].clientX)
+            }
+          }}
+          onTouchEnd={handleLightboxEnd}
+        >
+          {/* Close Button */}
+          <button
+            onClick={() => setIsLightboxOpen(false)}
+            className="absolute top-4 right-4 z-10 bg-neutral-800 bg-opacity-75 hover:bg-opacity-100 text-white rounded-full p-2 transition-all"
+            aria-label="Close lightbox"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          
+          {/* Image Counter */}
+          {images.length > 1 && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-neutral-800 bg-opacity-75 text-white px-4 py-2 rounded-full text-sm">
+              {lightboxIndex + 1} / {images.length}
+            </div>
+          )}
+          
+          {/* Previous Button */}
+          {images.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                goToLightboxPrevious()
+              }}
+              className="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-neutral-800 bg-opacity-75 hover:bg-opacity-100 text-white rounded-full p-3 transition-all"
+              aria-label="Previous image"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+          
+          {/* Next Button */}
+          {images.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                goToLightboxNext()
+              }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-neutral-800 bg-opacity-75 hover:bg-opacity-100 text-white rounded-full p-3 transition-all"
+              aria-label="Next image"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
+          
+          {/* Image Container */}
+          <div
+            className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              transform: lightboxDragging
+                ? `translateX(${lightboxCurrentX - lightboxStartX}px)`
+                : 'translateX(0)',
+              transition: lightboxDragging ? 'none' : 'transform 0.3s ease-out',
+            }}
+          >
+            <img
+              src={images[lightboxIndex]?.url || images[lightboxIndex]}
+              alt={images[lightboxIndex]?.alt || `Image ${lightboxIndex + 1}`}
+              className="max-w-full max-h-[90vh] object-contain"
+              draggable={false}
+              onError={(e) => {
+                e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23e5e5e5" width="400" height="300"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E'
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -236,6 +445,7 @@ ImageCarousel.propTypes = {
   showDots: PropTypes.bool,
   showArrows: PropTypes.bool,
   enableSwipe: PropTypes.bool,
+  enableLightbox: PropTypes.bool,
   className: PropTypes.string,
 }
 

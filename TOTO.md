@@ -307,27 +307,27 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 - [X] Add back button or breadcrumb navigation
 
 #### 3.7.3 Contact Us Page
-- [ ] Create `pages/ContactUs.js` component
-- [ ] Create contact form with fields:
+- [X] Create `pages/ContactUs.js` component
+- [X] Create contact form with fields:
   - Name (required, text input)
   - Phone (required, phone input with validation)
   - Email (required, email input with validation)
   - Message (required, textarea)
   
-- [ ] Implement form validation
+- [X] Implement form validation
   - Client-side validation
   - Display error messages
   - Disable submit button when form is invalid
   
-- [ ] Implement form submission
+- [X] Implement form submission
   - Submit to backend API
   - Show loading state during submission
   - Show success message on successful submission
   - Show error message on failure
   - Reset form after successful submission
   
-- [ ] Style form consistently with theme
-- [ ] Make form responsive
+- [X] Style form consistently with theme
+- [X] Make form responsive
 
 ### 3.8 Routing
 - [ ] Set up React Router
