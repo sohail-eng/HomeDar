@@ -330,13 +330,13 @@ Full-stack e-commerce application with Django REST Framework backend and React f
 - [X] Make form responsive
 
 ### 3.8 Routing
-- [ ] Set up React Router
-- [ ] Configure routes:
+- [X] Set up React Router
+- [X] Configure routes:
   - `/` - Product List Page (homepage)
   - `/product/:id` - Product Detail Page
   - `/contact` - Contact Us Page
-- [ ] Add 404 Not Found page
-- [ ] Add navigation between pages
+- [X] Add 404 Not Found page
+- [X] Add navigation between pages
 
 ### 3.9 Responsive Design
 - [ ] Test and adjust layout for mobile screens (< 768px)
