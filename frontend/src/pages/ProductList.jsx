@@ -398,14 +398,142 @@ function ProductList() {
       </div>
       
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        <div>
-          <h1 className="text-3xl font-bold text-neutral-900">Products</h1>
-          <p className="text-neutral-600 mt-1">
-            {pagination.count > 0 ? `${pagination.count} products found` : 'No products found'}
-          </p>
+      <div className="flex flex-col gap-3">
+        {/* Title and Search Row - Mobile/Tablet: inline, Desktop: separate */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
+          {/* Title Section */}
+          <div className="w-full lg:w-auto">
+            <h1 className="text-3xl font-bold text-neutral-900 flex-shrink-0">Products</h1>
+            {/* Mobile/Tablet: Product count and search on same line */}
+            <div className="flex items-center gap-2 lg:block">
+              <p className="text-neutral-600 mt-1 lg:mt-1">
+                {pagination.count > 0 ? `${pagination.count} products found` : 'No products found'}
+              </p>
+              {/* Search on Mobile/Tablet - Always visible next to product count */}
+              <div ref={searchContainerRef} className="flex-1 lg:hidden min-w-0">
+                <div className="flex items-center gap-2 bg-white border border-neutral-300 rounded-lg px-2 lg:px-3 py-2 shadow-sm">
+                  <svg className="w-4 h-4 lg:w-5 lg:h-5 text-neutral-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    placeholder="Search..."
+                    className="outline-none border-none focus:ring-0 text-sm flex-1 min-w-0"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => clearSearch()}
+                      className="text-neutral-400 hover:text-neutral-600 flex-shrink-0 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+                      aria-label="Clear search"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Desktop: Filters row with search */}
+          <div className="hidden lg:flex gap-2 items-center">
+            {/* Price Range */}
+            <div className="flex gap-2 items-center">
+              <Input
+                type="number"
+                value={localFilters.minPrice}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLocalFilters((prev) => ({ ...prev, minPrice: value === '0' ? '' : value }))
+                }}
+                placeholder="Min Price"
+                fullWidth={false}
+                className="w-24"
+              />
+              <Input
+                type="number"
+                value={localFilters.maxPrice}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLocalFilters((prev) => ({ ...prev, maxPrice: value === '0' ? '' : value }))
+                }}
+                placeholder="Max Price"
+                fullWidth={false}
+                className="w-24"
+              />
+            </div>
+            
+            {/* Sort By Dropdown */}
+            <div className="relative flex items-center">
+              <select
+                value={localFilters.ordering}
+                onChange={(e) => setLocalFilters((prev) => ({ ...prev, ordering: e.target.value }))}
+                className="px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm bg-white cursor-pointer touch-manipulation min-w-[44px] min-h-[44px]"
+              >
+                <option value="-created_at">Newest First</option>
+                <option value="created_at">Oldest First</option>
+                <option value="price">Price: Low to High</option>
+                <option value="-price">Price: High to Low</option>
+                <option value="title">Title: A to Z</option>
+                <option value="-title">Title: Z to A</option>
+                <option value="-updated_at">Recently Updated</option>
+              </select>
+            </div>
+            
+            {/* Search on Desktop - Toggle button */}
+            <div ref={searchContainerRef} className="relative flex items-center">
+              {showSearch ? (
+                <div className="flex items-center gap-1.5 bg-white border border-neutral-300 rounded-lg px-2 py-2 shadow-sm">
+                  <svg className="w-4 h-4 text-neutral-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    placeholder="Search..."
+                    className="outline-none border-none focus:ring-0 text-sm w-48"
+                  />
+                  <button
+                    onClick={() => {
+                      setShowSearch(false)
+                      clearSearch()
+                    }}
+                    className="text-neutral-400 hover:text-neutral-600 flex-shrink-0 touch-manipulation w-4 h-4 flex items-center justify-center p-0"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowSearch(true)}
+                  className="p-2 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+                  aria-label="Search"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            
+            {getActiveFiltersCount() > 0 && (
+              <Button variant="ghost" size="sm" onClick={handleResetFilters} className="touch-manipulation min-w-[44px] min-h-[44px]">
+                Reset
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2 items-center">
+        
+        {/* Mobile/Tablet: Min, Max, Sort on same line */}
+        <div className="flex lg:hidden gap-2 items-center w-full">
           {/* Price Range */}
           <div className="flex gap-2 items-center">
             <Input
@@ -437,7 +565,7 @@ function ProductList() {
             <select
               value={localFilters.ordering}
               onChange={(e) => setLocalFilters((prev) => ({ ...prev, ordering: e.target.value }))}
-              className="px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm bg-white cursor-pointer"
+              className="px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm bg-white cursor-pointer touch-manipulation min-w-[44px] min-h-[44px]"
             >
               <option value="-created_at">Newest First</option>
               <option value="created_at">Oldest First</option>
@@ -449,48 +577,13 @@ function ProductList() {
             </select>
           </div>
           
-          {/* Search Icon/Input */}
-          <div ref={searchContainerRef} className="relative flex items-center">
-            {showSearch ? (
-              <div className="flex items-center gap-2 bg-white border border-neutral-300 rounded-lg px-3 py-2 shadow-sm">
-                <svg className="w-5 h-5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => handleSearch(e.target.value)}
-                  placeholder="Search products..."
-                  className="outline-none border-none focus:ring-0 text-sm w-64"
-                />
-                <button
-                  onClick={() => {
-                    setShowSearch(false)
-                    clearSearch()
-                  }}
-                  className="text-neutral-400 hover:text-neutral-600"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowSearch(true)}
-                className="p-2 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
-                aria-label="Search"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </button>
-            )}
-          </div>
-          
           {getActiveFiltersCount() > 0 && (
-            <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={handleResetFilters}
+              className="flex-shrink-0 whitespace-nowrap"
+            >
               Reset
             </Button>
           )}
