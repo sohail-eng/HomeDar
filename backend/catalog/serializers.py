@@ -16,8 +16,12 @@ class CategorySerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_subcategories(self, obj):
-        """Get list of subcategories for this category."""
-        subcategories = obj.subcategories.all()
+        """
+        Get list of subcategories for this category.
+        Only returns subcategories that have at least one product.
+        """
+        # Filter subcategories to only include those with products
+        subcategories = obj.subcategories.filter(products__isnull=False).distinct()
         return [
             {
                 'id': str(sub.id),

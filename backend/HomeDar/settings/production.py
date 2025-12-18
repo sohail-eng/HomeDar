@@ -50,6 +50,32 @@ CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
 # Make sure to run: python manage.py collectstatic
 STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
 
+# Media storage: local vs Google Cloud Storage (GCS)
+# By default we keep using local MEDIA_ROOT (/media/).
+# When USE_GCS_MEDIA=true, uploaded files go to the configured GCS bucket.
+USE_GCS_MEDIA = env.bool('USE_GCS_MEDIA', default=False)
+
+if USE_GCS_MEDIA:
+    # Use Google Cloud Storage for media files
+    DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
+
+    GS_BUCKET_NAME = env('GS_BUCKET_NAME')
+
+    # Optional: path to service account JSON file
+    GS_CREDENTIALS_FILE = env('GS_CREDENTIALS_FILE', default=None)
+    if GS_CREDENTIALS_FILE:
+        from google.oauth2 import service_account
+
+        GS_CREDENTIALS = service_account.Credentials.from_service_account_file(
+            GS_CREDENTIALS_FILE
+        )
+
+    # Media URLs will be served from GCS
+    MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
+
+    # Optional: control default ACL for uploaded files
+    GS_DEFAULT_ACL = 'publicRead'
+
 # Email configuration for production
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = env('EMAIL_HOST', default='smtp.gmail.com')

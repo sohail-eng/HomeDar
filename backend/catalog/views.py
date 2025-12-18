@@ -12,7 +12,6 @@ from .models import Category, SubCategory, Product, ProductImage, ContactUs
 from .serializers import (
     CategorySerializer,
     SubCategorySerializer,
-    ProductSerializer,
     ProductListSerializer,
     ProductDetailSerializer,
     ProductImageSerializer,
@@ -25,8 +24,15 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     ViewSet for Category model.
     Provides list and retrieve actions.
     Endpoint: /api/categories/
+    Returns only categories that have subcategories with at least one product.
     """
-    queryset = Category.objects.prefetch_related('subcategories').all()
+    queryset = Category.objects.prefetch_related(
+        'subcategories',
+        'subcategories__products'
+    ).filter(
+        subcategories__isnull=False,
+        subcategories__products__isnull=False
+    ).distinct()
     serializer_class = CategorySerializer
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['name']

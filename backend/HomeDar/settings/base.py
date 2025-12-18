@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'django_filters',
     'corsheaders',
     'drf_yasg',  # API documentation
+    'storages',  # Storage backends (used for optional GCS media)
     # Local apps
     'catalog',
 ]
