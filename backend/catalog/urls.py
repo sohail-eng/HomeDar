@@ -3,13 +3,18 @@ URL configuration for catalog app.
 """
 
 from django.urls import path, include
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.routers import DefaultRouter
+
 from .views import (
     CategoryViewSet,
     SubCategoryViewSet,
     ProductViewSet,
     ProductImageViewSet,
     ContactUsViewSet,
+    ProductViewTrackingAPIView,
+    RecentProductsAPIView,
+    PopularProductsAPIView,
 )
 
 # Create a router and register viewsets
@@ -22,5 +27,8 @@ router.register(r'contact-us', ContactUsViewSet, basename='contact-us')
 
 urlpatterns = [
     path('', include(router.urls)),
+    # Tracking endpoints
+    path('tracking/product-views/', csrf_exempt(ProductViewTrackingAPIView.as_view()), name='product-view-tracking'),
+    path('tracking/recent-products/', RecentProductsAPIView.as_view(), name='recent-products'),
+    path('tracking/popular-products/', PopularProductsAPIView.as_view(), name='popular-products'),
 ]
-

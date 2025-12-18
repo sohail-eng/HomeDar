@@ -4,7 +4,15 @@ Django admin configuration for HomeDar catalog application.
 
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Category, SubCategory, Product, ProductImage, ContactUs
+from .models import (
+    Category,
+    SubCategory,
+    Product,
+    ProductImage,
+    ContactUs,
+    VisitorProfile,
+    ProductView,
+)
 
 
 class SubCategoryInline(admin.TabularInline):
@@ -195,3 +203,62 @@ class ContactUsAdmin(admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         """Disable editing ContactUs from admin (read-only)."""
         return False
+
+
+@admin.register(VisitorProfile)
+class VisitorProfileAdmin(admin.ModelAdmin):
+    """Admin interface for VisitorProfile model."""
+
+    list_display = ['short_id', 'country', 'city', 'last_ip', 'latitude', 'longitude', 'first_seen', 'last_seen']
+    list_filter = ['country', 'city', 'first_seen', 'last_seen']
+    search_fields = ['visitor_id', 'last_ip', 'country', 'city']
+    readonly_fields = ['visitor_id', 'first_seen', 'last_seen']
+    date_hierarchy = 'last_seen'
+
+    fieldsets = (
+        ('Visitor', {
+            'fields': ('visitor_id',),
+        }),
+        ('Location', {
+            'fields': ('country', 'city', 'latitude', 'longitude'),
+        }),
+        ('Network', {
+            'fields': ('last_ip',),
+        }),
+        ('Timestamps', {
+            'fields': ('first_seen', 'last_seen'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    def short_id(self, obj):
+        return str(obj.visitor_id)[:8]
+
+    short_id.short_description = 'Visitor'
+
+
+@admin.register(ProductView)
+class ProductViewAdmin(admin.ModelAdmin):
+    """Admin interface for ProductView model."""
+
+    list_display = ['visitor_short', 'product', 'country', 'city', 'viewed_at', 'latitude', 'longitude']
+    list_filter = ['country', 'city', 'product', 'viewed_at']
+    search_fields = ['visitor__visitor_id', 'product__title', 'product__sku', 'city', 'country']
+    readonly_fields = ['id', 'visitor', 'product', 'viewed_at']
+    date_hierarchy = 'viewed_at'
+    list_select_related = ['visitor', 'product']
+
+    fieldsets = (
+        ('Event', {
+            'fields': ('id', 'visitor', 'product', 'viewed_at'),
+        }),
+        ('Location at Time of View', {
+            'fields': ('country', 'city', 'latitude', 'longitude'),
+        }),
+    )
+
+    def visitor_short(self, obj):
+        return obj.visitor_id_display
+
+    visitor_short.short_description = 'Visitor'
+

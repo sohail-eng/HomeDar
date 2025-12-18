@@ -8,7 +8,7 @@ export const API_ENDPOINTS = {
 }
 
 // Pagination
-export const DEFAULT_PAGE_SIZE = 20
+export const DEFAULT_PAGE_SIZE = 50
 
 // Image placeholders
 export const PLACEHOLDER_IMAGE = '/placeholder-image.png'

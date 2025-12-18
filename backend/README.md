@@ -14,6 +14,7 @@ Django REST Framework backend for the HomeDar e-commerce application.
 - [Testing](#testing)
 - [Project Structure](#project-structure)
 - [Additional Resources](#additional-resources)
+ - [Visitor Tracking & Location](#visitor-tracking--location)
 
 ## Prerequisites
 
@@ -255,6 +256,69 @@ GET /api/products/?search=laptop&min_price=100&max_price=500&ordering=-price
   - Response: Success message with submitted data
   - Note: Only POST method is allowed
 
+#### Tracking & Analytics
+
+- **Track Product View**
+  - `POST /api/tracking/product-views/`
+  - Uses an anonymous `visitor_id` cookie (created automatically if missing).
+  - Body:
+    ```json
+    {
+      "product_id": "uuid-of-product",
+      "latitude": 31.5204,
+      "longitude": 74.3587
+    }
+    ```
+  - Behavior:
+    - Links the view to a `VisitorProfile` (created/updated based on cookie).
+    - Enriches with approximate location from IP (country, city) via external IP geo API.
+    - Applies simple throttling: ignores duplicate views of the same product by the same visitor within ~60 seconds.
+
+- **Recently Viewed Products**
+  - `GET /api/tracking/recent-products/`
+  - Uses `visitor_id` from cookie to return last N unique products for that visitor.
+  - Query params:
+    - `limit` (optional, default `10`, max `50`)
+  - Response:
+    ```json
+    {
+      "results": [
+        {
+          "id": "product-uuid",
+          "title": "Product title",
+          "price": "123.45",
+          "sku": "SKU-123",
+          "main_image_url": "https://.../image.jpg",
+          "subcategories": []
+        }
+      ]
+    }
+    ```
+
+- **Popular Products (by location & period)**
+  - `GET /api/tracking/popular-products/`
+  - Query params:
+    - `country` (optional): Country name (e.g. `Pakistan`). If omitted, backend tries to infer from visitor profile.
+    - `period` (optional): one of `24h`, `7d` (default), `30d`.
+    - `limit` (optional, default `10`, max `50`)
+  - Response:
+    ```json
+    {
+      "results": [
+        {
+          "id": "product-uuid",
+          "title": "Product title",
+          "price": "123.45",
+          "sku": "SKU-123",
+          "main_image_url": "https://.../image.jpg",
+          "subcategories": []
+        }
+      ],
+      "country": "PK",
+      "period": "7d"
+    }
+    ```
+
 ### Response Format
 
 All API responses follow REST conventions:
@@ -333,11 +397,16 @@ backend/
 │   ├── __init__.py
 │   ├── admin.py               # Django admin configuration
 │   ├── apps.py                # App configuration
-│   ├── models.py              # Database models
+│   ├── models.py              # Database models (includes VisitorProfile & ProductView)
 │   ├── serializers.py         # DRF serializers
 │   ├── tests.py               # Test suite
 │   ├── urls.py                # URL routing
-│   ├── views.py               # API viewsets
+│   ├── views.py               # API viewsets (includes tracking endpoints)
+│   ├── utils/
+│   │   └── geo.py             # IP geolocation helpers for tracking
+│   ├── management/
+│   │   └── commands/
+│   │       └── cleanup_tracking_data.py  # Management command to purge old tracking data
 │   └── migrations/            # Database migrations
 │       └── 0001_initial.py
 ├── HomeDar/                   # Project settings

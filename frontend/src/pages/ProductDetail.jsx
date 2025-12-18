@@ -7,6 +7,8 @@ import {
   Button,
 } from '../components/common'
 import ImageCarousel from '../components/common/ImageCarousel'
+import { trackProductView } from '../services/trackingService'
+import { useBrowserLocation } from '../hooks/useBrowserLocation'
 
 /**
  * Product Detail Page
@@ -16,12 +18,34 @@ function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { currentProduct, loading, error, fetchProductById } = useProduct()
+  const { status: locationStatus, location } = useBrowserLocation()
   
   useEffect(() => {
     if (id) {
       fetchProductById(id)
     }
   }, [id, fetchProductById])
+
+  // Track product view once per product load.
+  // If browser location is available, include it; otherwise track without it.
+  useEffect(() => {
+    if (!currentProduct || !currentProduct.id) return
+
+    // Wait until we either have a location or know that it was denied.
+    if (locationStatus === 'requesting' || locationStatus === 'idle') {
+      return
+    }
+
+    if (location && typeof location.latitude === 'number' && typeof location.longitude === 'number') {
+      trackProductView(currentProduct.id, {
+        latitude: location.latitude,
+        longitude: location.longitude,
+      })
+    } else {
+      // No location (denied or unavailable) – still track the view.
+      trackProductView(currentProduct.id)
+    }
+  }, [currentProduct?.id, locationStatus, location?.latitude, location?.longitude])
   
   // Prepare images for carousel
   const getProductImages = () => {

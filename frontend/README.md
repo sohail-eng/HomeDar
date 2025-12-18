@@ -8,10 +8,11 @@ React frontend application for the HomeDar e-commerce platform. Built with React
 - [Environment Setup](#environment-setup)
 - [Running Development Server](#running-development-server)
 - [Building for Production](#building-for-production)
-- [Project Structure](#project-structure)
-- [Component Documentation](#component-documentation)
-- [API Integration](#api-integration)
-- [Testing](#testing)
+ - [Project Structure](#project-structure)
+ - [Component Documentation](#component-documentation)
+ - [API Integration](#api-integration)
+ - [Testing](#testing)
+ - [Visitor Tracking & Location](#visitor-tracking--location)
 
 ## Installation
 
@@ -205,15 +206,17 @@ frontend/
 │   │   ├── categoryService.js
 │   │   ├── subCategoryService.js
 │   │   ├── contactService.js
-│   │   └── index.js
+│   │   └── trackingService.js  # Visitor tracking endpoints
 │   ├── hooks/              # Custom React hooks
-│   │   └── useApi.js
+│   │   ├── useApi.js
+│   │   └── useBrowserLocation.js  # Global browser geolocation helper
 │   ├── utils/              # Utility functions
 │   │   ├── constants.js    # App constants
-│   │   └── theme.js        # Theme configuration
+│   │   ├── theme.js        # Theme configuration
+│   │   └── visitor.js      # Anonymous visitor ID utility
 │   ├── styles/             # Global styles
 │   │   └── index.css       # Tailwind CSS imports
-│   ├── App.jsx             # Root App component
+│   ├── App.jsx             # Root App component (wires global location hook)
 │   └── main.jsx            # Application entry point
 ├── dist/                   # Production build output (generated)
 ├── index.html              # HTML template
@@ -256,6 +259,65 @@ import { Button } from '../components/common'
   Click Me
 </Button>
 ```
+
+## Visitor Tracking & Location
+
+### Anonymous Visitor ID
+
+- Implemented in `src/utils/visitor.js`:
+  - `getOrCreateVisitorId()`:
+    - Tries to read `visitor_id` from cookies.
+    - Falls back to localStorage if needed.
+    - Generates a UUID (using `crypto.randomUUID()` when available) if missing.
+    - Writes the ID back to both cookie and localStorage with a long expiry.
+  - Used by the tracking service before calling any tracking endpoint.
+
+### Tracking Service
+
+- Implemented in `src/services/trackingService.js`:
+  - `trackProductView(productId, options)`:
+    - Ensures `visitor_id` exists.
+    - Accepts optional `latitude` / `longitude` (from browser geolocation).
+    - Sends `POST /api/tracking/product-views/` to the backend.
+  - `getRecentProducts(limit)`:
+    - Calls `GET /api/tracking/recent-products/?limit=...`.
+    - Returns an array of products compatible with existing `Card` components.
+  - `getPopularProducts({ country, period, limit })`:
+    - Calls `GET /api/tracking/popular-products/` with optional filters.
+    - Returns products plus resolved `country` and `period` from the backend.
+
+### Location Consent & Browser Geolocation
+
+- Global hook `src/hooks/useBrowserLocation.js`:
+  - Runs once when `App.jsx` mounts.
+  - If the user has **not** previously denied location:
+    - Calls `navigator.geolocation.getCurrentPosition(...)`.
+    - Rounds latitude/longitude to 4 decimals for privacy.
+    - Stores the last known location in `localStorage.location_last`.
+    - Marks consent in `localStorage.location_consent = 'granted'`.
+  - On error/denial:
+    - Sets `localStorage.location_consent = 'denied'` so the user is not repeatedly prompted.
+  - Only updates stored location when it changes more than a small threshold (to avoid noise).
+
+### UI Features Using Tracking Data
+
+- `RecentlyViewed` (`src/components/tracking/RecentlyViewed.jsx`):
+  - Fetches recent products via `getRecentProducts(8)`.
+  - Renders a responsive grid of cards.
+  - Integrated at the bottom of the main `ProductList` page.
+
+- `PopularInYourArea` (`src/components/tracking/PopularInYourArea.jsx`):
+  - Fetches popular products via `getPopularProducts({ limit: 8 })`.
+  - Shows heading “Popular Near You” with optional country suffix.
+  - Also rendered under the main product grid on the `ProductList` page.
+
+### Product Detail Integration
+
+- In `src/pages/ProductDetail.jsx`:
+  - After a product is successfully loaded (`currentProduct` is set), it:
+    - Reads `location_last` from localStorage (if available).
+    - Calls `trackProductView(currentProduct.id, { latitude, longitude })`.
+    - Ensures tracking runs once per product ID / page load.
 
 #### Input
 Form input component with label, error, and helper text support.

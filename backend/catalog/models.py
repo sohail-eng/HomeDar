@@ -4,11 +4,12 @@ Database models for HomeDar catalog application.
 
 import uuid
 from decimal import Decimal
-from django.db import models
-from django.db.models.signals import pre_delete, post_save
-from django.dispatch import receiver
-from django.core.validators import MinValueValidator, EmailValidator
+
 from django.core.exceptions import ValidationError
+from django.core.validators import EmailValidator, MinValueValidator
+from django.db import models
+from django.db.models.signals import post_save, pre_delete
+from django.dispatch import receiver
 
 
 class TimeStampedModel(models.Model):
@@ -162,6 +163,145 @@ class ContactUs(models.Model):
         """Override save to call clean validation."""
         self.full_clean()
         super().save(*args, **kwargs)
+
+
+class VisitorProfile(models.Model):
+    """
+    Anonymous visitor profile for tracking product views and approximate location.
+
+    This model is intentionally minimal and does not store any PII – only:
+    - an anonymous visitor_id (UUID as string)
+    - high-level location information derived from IP / browser geolocation
+    """
+
+    visitor_id = models.CharField(
+        max_length=64,
+        primary_key=True,
+        help_text="Anonymous visitor identifier (UUID stored as string).",
+    )
+    first_seen = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Timestamp when this visitor was first seen.",
+    )
+    last_seen = models.DateTimeField(
+        auto_now=True,
+        help_text="Timestamp when this visitor was last seen.",
+    )
+    last_ip = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        help_text="Last IP address observed for this visitor (for geolocation).",
+    )
+    country = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        help_text="Country name (e.g. 'Pakistan', 'United States').",
+    )
+    city = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        help_text="City or region name derived from geolocation.",
+    )
+    latitude = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Approximate latitude (rounded, optional).",
+    )
+    longitude = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Approximate longitude (rounded, optional).",
+    )
+
+    class Meta:
+        verbose_name = "Visitor Profile"
+        verbose_name_plural = "Visitor Profiles"
+        ordering = ["-last_seen"]
+
+    def __str__(self) -> str:
+        return f"Visitor {self.visitor_id}"
+
+
+class ProductView(models.Model):
+    """
+    A single view of a product by an anonymous visitor.
+
+    This is the core tracking event we will aggregate for:
+    - recently viewed products per visitor
+    - popular products by location / timeframe
+    """
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    visitor = models.ForeignKey(
+        VisitorProfile,
+        on_delete=models.CASCADE,
+        related_name="product_views",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="views",
+    )
+    viewed_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Timestamp when the product was viewed.",
+    )
+    country = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        help_text="Country name at time of view (copied from visitor, if available).",
+    )
+    city = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        help_text="City/region at time of view (copied from visitor, if available).",
+    )
+    latitude = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Latitude at time of view (optional, rounded).",
+    )
+    longitude = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Longitude at time of view (optional, rounded).",
+    )
+    user_agent = models.CharField(
+        max_length=256,
+        null=True,
+        blank=True,
+        help_text="Optional truncated user agent string for device-level insights.",
+    )
+
+    class Meta:
+        verbose_name = "Product View"
+        verbose_name_plural = "Product Views"
+        ordering = ["-viewed_at"]
+        indexes = [
+            models.Index(fields=["visitor", "viewed_at"]),
+            models.Index(fields=["product", "viewed_at"]),
+            models.Index(fields=["country", "viewed_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.visitor_id_display} viewed {self.product} at {self.viewed_at}"
+
+    @property
+    def visitor_id_display(self) -> str:
+        """
+        Shortened visitor id for readability (first 8 chars if UUID-like).
+        """
+        if not self.visitor or not self.visitor.visitor_id:
+            return "unknown"
+        return str(self.visitor.visitor_id)[:8]
 
 
 @receiver(post_save, sender=ProductImage)

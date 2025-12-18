@@ -14,6 +14,8 @@ import {
   ScrollableContainer,
   FilterDropdown,
 } from '../components/common'
+import RecentlyViewed from '../components/tracking/RecentlyViewed'
+import PopularInYourArea from '../components/tracking/PopularInYourArea'
 
 /**
  * Product List Page (Homepage)
@@ -716,7 +718,7 @@ function ProductList() {
               </Card>
             ))}
           </div>
-          
+
           {/* Pagination */}
           {pagination.totalPages > 1 && (
             <div className="mt-8">
@@ -730,6 +732,31 @@ function ProductList() {
               />
             </div>
           )}
+
+          {/* Tracking-based sections below main listing */}
+          <div className="mt-10 pt-10">
+            {/* Decorative separator */}
+            <div className="relative mb-10">
+              <div className="h-px w-full bg-gradient-to-r from-transparent via-neutral-200 to-transparent" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="h-1 w-48 rounded-full bg-gradient-to-r from-primary-400 via-primary-500 to-primary-400 shadow-sm" />
+              </div>
+            </div>
+
+            <div className="space-y-10">
+              <RecentlyViewed onProductClick={handleProductClick} />
+
+              {/* Decorative separator between Recently Viewed and Popular sections */}
+              <div className="relative">
+                <div className="h-px w-full bg-gradient-to-r from-transparent via-neutral-200 to-transparent" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="h-1 w-48 rounded-full bg-gradient-to-r from-primary-400 via-primary-500 to-primary-400 shadow-sm" />
+                </div>
+              </div>
+
+              <PopularInYourArea onProductClick={handleProductClick} />
+            </div>
+          </div>
         </>
       ) : (
         <div className="text-center py-12">

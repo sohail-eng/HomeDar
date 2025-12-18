@@ -2,13 +2,18 @@
 API Views and ViewSets for HomeDar catalog application.
 """
 
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
+from datetime import timedelta
+
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.filters import SearchFilter, OrderingFilter
-from django.db.models import Q
-from .models import Category, SubCategory, Product, ProductImage, ContactUs
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework import status, viewsets
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.filters import OrderingFilter, SearchFilter
+
+from .models import Category, SubCategory, Product, ProductImage, ContactUs, ProductView
 from .serializers import (
     CategorySerializer,
     SubCategorySerializer,
@@ -16,7 +21,10 @@ from .serializers import (
     ProductDetailSerializer,
     ProductImageSerializer,
     ContactUsSerializer,
+    ProductViewCreateSerializer,
+    RecentProductSerializer,
 )
+from .utils.geo import get_client_ip, ensure_visitor_profile_for_request
 
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
@@ -202,4 +210,271 @@ class ContactUsViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_201_CREATED,
             headers=headers
+        )
+
+
+class ProductViewTrackingAPIView(APIView):
+    """
+    Create ProductView tracking events.
+
+    POST /api/tracking/product-views/
+    - Uses visitor_id from cookie (creates if missing)
+    - Uses client IP to update VisitorProfile (including geolocation)
+    - Merges optional browser lat/lng
+    - Basic throttle: ignores duplicate views of the same product in the
+      last N seconds (default 60s).
+    """
+
+    cookie_name = "visitor_id"
+    # Disable CSRF/session auth for this anonymous tracking endpoint.
+    authentication_classes = []
+
+    def post(self, request, *args, **kwargs):
+        serializer = ProductViewCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        product = serializer.context.get("product")
+        latitude = serializer.validated_data.get("latitude")
+        longitude = serializer.validated_data.get("longitude")
+
+        # Prefer visitor_id provided by the frontend (body), then cookie, then generate.
+        payload_visitor_id = request.data.get("visitor_id")
+        visitor_id = payload_visitor_id or request.COOKIES.get(self.cookie_name)
+        if not visitor_id:
+            # Use simple UUID4 string; let frontend also set same cookie, but
+            # backend is defensive and can generate it too.
+            import uuid
+
+            visitor_id = str(uuid.uuid4())
+
+        # Ensure / update VisitorProfile (including IP-based geolocation).
+        visitor_profile = ensure_visitor_profile_for_request(request, visitor_id)
+
+        # If browser provided more precise lat/lng, update the VisitorProfile as well.
+        visitor_profile_updated = False
+        if latitude is not None and visitor_profile.latitude != latitude:
+            visitor_profile.latitude = latitude
+            visitor_profile_updated = True
+        if longitude is not None and visitor_profile.longitude != longitude:
+            visitor_profile.longitude = longitude
+            visitor_profile_updated = True
+        if visitor_profile_updated:
+            visitor_profile.save(update_fields=["latitude", "longitude"])
+
+        # Basic duplicate/throttle logic: ignore if same visitor viewed same
+        # product within the last duplicate_window_seconds.
+        now = timezone.now()
+
+        existing = ProductView.objects.filter(
+            visitor=visitor_profile,
+            product=product
+        ).order_by("-viewed_at").first()
+
+        if existing:
+            # Optionally update lat/lng if new info is provided
+            updated = False
+            if latitude is not None and existing.latitude != latitude:
+                existing.latitude = latitude
+                updated = True
+            if longitude is not None and existing.longitude != longitude:
+                existing.longitude = longitude
+                updated = True
+            # Always refresh viewed_at for recency
+            existing.viewed_at = now
+            update_fields = ["viewed_at"]
+            if updated:
+                update_fields.extend(["latitude", "longitude"])
+            existing.save(update_fields=update_fields)
+
+            response = Response({"success": True, "duplicate": True})
+        else:
+            # Create a new ProductView row.
+            view_kwargs = {
+                "visitor": visitor_profile,
+                "product": product,
+                "country": visitor_profile.country,
+                "city": visitor_profile.city,
+            }
+            if latitude is not None:
+                view_kwargs["latitude"] = latitude
+            if longitude is not None:
+                view_kwargs["longitude"] = longitude
+
+            ProductView.objects.create(**view_kwargs)
+            response = Response({"success": True, "duplicate": False})
+
+        # Ensure the visitor_id cookie is set on the response (and aligned with payload).
+        # 1-year expiry
+        max_age = 60 * 60 * 24 * 365
+        response.set_cookie(
+            self.cookie_name,
+            visitor_id,
+            max_age=max_age,
+            httponly=False,  # must be accessible from frontend JS
+            samesite="Lax",
+        )
+
+        return response
+
+
+class RecentProductsAPIView(APIView):
+    """
+    Return recently viewed products for the current anonymous visitor.
+
+    GET /api/tracking/recent-products/
+    - Uses visitor_id from cookie
+    - Returns last N unique products ordered by most recent view
+    - Response shape matches ProductListSerializer
+    """
+
+    cookie_name = "visitor_id"
+    default_limit = 20
+
+    def get(self, request, *args, **kwargs):
+        visitor_id = request.COOKIES.get(self.cookie_name)
+        if not visitor_id:
+            return Response({"results": []})
+
+        from .models import VisitorProfile
+
+        try:
+            visitor = VisitorProfile.objects.get(visitor_id=visitor_id)
+        except VisitorProfile.DoesNotExist:
+            return Response({"results": []})
+
+        limit = self.default_limit
+        try:
+            if "limit" in request.query_params:
+                limit = max(1, min(50, int(request.query_params["limit"])))
+        except (TypeError, ValueError):
+            pass
+
+        # Get recent views and deduplicate by product, preserving order.
+        views_qs = (
+            ProductView.objects.filter(visitor=visitor)
+            .select_related("product")
+            .order_by("-viewed_at")
+        )
+
+        seen_product_ids = set()
+        products = []
+        for view in views_qs:
+            pid = view.product_id
+            if pid in seen_product_ids:
+                continue
+            seen_product_ids.add(pid)
+            products.append(view.product)
+            if len(products) >= limit:
+                break
+
+        serializer = RecentProductSerializer(
+            products,
+            many=True,
+            context={"request": request},
+        )
+        return Response({"results": serializer.data})
+
+
+class PopularProductsAPIView(APIView):
+    """
+    Return popular products by view count, optionally filtered by country and period.
+
+    GET /api/tracking/popular-products/
+    Query params:
+    - country: ISO country code (default: infer from visitor or IP if available)
+    - period: '24h', '7d', '30d' (default: '7d')
+    - limit: number of products to return (default: 10, max: 50)
+    """
+
+    cookie_name = "visitor_id"
+    default_limit = 20
+
+    def get(self, request, *args, **kwargs):
+        from django.db.models import Count, Max, Case, When, IntegerField
+        from .models import VisitorProfile
+
+        # Resolve period
+        period_param = request.query_params.get("period", "7d")
+        now = timezone.now()
+        if period_param == "24h":
+            since = now - timedelta(hours=24)
+        elif period_param == "30d":
+            since = now - timedelta(days=30)
+        else:
+            # default to 7 days
+            since = now - timedelta(days=7)
+
+        limit = self.default_limit
+        try:
+            if "limit" in request.query_params:
+                limit = max(1, min(50, int(request.query_params["limit"])))
+        except (TypeError, ValueError):
+            pass
+
+        views_qs = ProductView.objects.filter(viewed_at__gte=since)
+
+        # Resolve current visitor's location (country/city) for ordering priority.
+        visitor_country = None
+        visitor_city = None
+        visitor_id = request.COOKIES.get(self.cookie_name)
+        if visitor_id:
+            try:
+                visitor = VisitorProfile.objects.get(visitor_id=visitor_id)
+                visitor_country = visitor.country
+                visitor_city = visitor.city
+            except VisitorProfile.DoesNotExist:
+                pass
+
+        # Aggregate by view count and last_viewed_at, and prioritize:
+        # 1) Visitor's exact city + country
+        # 2) Same country (any city)
+        # 3) All other locations
+        product_last_views = (
+            views_qs.values("product")
+            .annotate(
+                view_count=Count("id"),
+                last_viewed_at=Max("viewed_at"),
+                location_priority=Case(
+                    # Highest: same city AND country as visitor
+                    When(
+                        country=visitor_country,
+                        city=visitor_city,
+                        then=2,
+                    ),
+                    # Next: same country (any city)
+                    When(
+                        country=visitor_country,
+                        then=1,
+                    ),
+                    default=0,
+                    output_field=IntegerField(),
+                ),
+            )
+            .order_by(
+                "-location_priority",  # 1) visitor city, then visitor country, then others
+                "-view_count",         # 2) view count
+                "-last_viewed_at",     # 3) recency
+                "country",             # 4) country name
+                "city",                # 5) city name
+            )
+        )[:limit]
+
+        product_ids = [item["product"] for item in product_last_views]
+        products = list(Product.objects.filter(id__in=product_ids).prefetch_related("images"))
+
+        # Preserve the order defined by product_counts.
+        products_by_id = {p.id: p for p in products}
+        ordered_products = [products_by_id[pid] for pid in product_ids if pid in products_by_id]
+
+        serializer = RecentProductSerializer(
+            ordered_products,
+            many=True,
+            context={"request": request},
+        )
+        return Response(
+            {
+                "results": serializer.data,
+                "country": None,
+                "period": period_param,
+            }
         )

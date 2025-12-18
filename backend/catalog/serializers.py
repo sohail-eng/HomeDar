@@ -3,7 +3,15 @@ Serializers for HomeDar catalog application.
 """
 
 from rest_framework import serializers
-from .models import Category, SubCategory, Product, ProductImage, ContactUs
+
+from .models import (
+    Category,
+    SubCategory,
+    Product,
+    ProductImage,
+    ContactUs,
+    ProductView,
+)
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -164,4 +172,42 @@ class ContactUsSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Phone cannot be empty.")
         return value.strip()
+
+
+class ProductViewCreateSerializer(serializers.Serializer):
+    """
+    Serializer for creating ProductView tracking events.
+
+    Accepts:
+    - product_id (required, UUID as string)
+    - latitude / longitude (optional, from browser geolocation)
+    """
+
+    product_id = serializers.UUIDField()
+    latitude = serializers.FloatField(required=False)
+    longitude = serializers.FloatField(required=False)
+
+    def validate_product_id(self, value):
+        """Ensure the referenced product exists."""
+        from .models import Product  # Local import to avoid circular refs
+
+        try:
+            product = Product.objects.get(id=value)
+        except Product.DoesNotExist:
+            raise serializers.ValidationError("Product not found.")
+        # Attach product instance for use in the view
+        self.context["product"] = product
+        return value
+
+
+class RecentProductSerializer(ProductListSerializer):
+    """
+    Serializer for products returned from recent/popular tracking endpoints.
+
+    Inherits from ProductListSerializer so the shape matches the product list page.
+    """
+
+    class Meta(ProductListSerializer.Meta):
+        model = Product
+
 
