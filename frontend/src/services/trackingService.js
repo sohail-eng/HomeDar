@@ -98,10 +98,48 @@ export const getPopularProducts = async (options = {}) => {
   }
 }
 
+/**
+ * Get products that were viewed by visitors who also viewed the specified product.
+ * 
+ * @param {string} productId - Product UUID
+ * @param {Object} options
+ * @param {number} [options.limit] - Optional limit (default: 12, max: 20)
+ * @param {string} [options.period] - Optional time period: '30d' or '90d' (default: '90d')
+ */
+export const getAlsoViewedProducts = async (productId, options = {}) => {
+  try {
+    if (!productId) {
+      return {
+        success: false,
+        data: [],
+      }
+    }
+
+    const params = {}
+    if (options.limit) params.limit = options.limit
+    if (options.period) params.period = options.period
+
+    const response = await api.get(`/tracking/also-viewed/${productId}/`, { params })
+    return {
+      success: true,
+      data: response.data.results || [],
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Failed to fetch also viewed products:', error)
+    }
+    return {
+      success: false,
+      data: [],
+    }
+  }
+}
+
 export default {
   trackProductView,
   getRecentProducts,
   getPopularProducts,
+  getAlsoViewedProducts,
 }
 
 

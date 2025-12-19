@@ -9,6 +9,7 @@ import {
 import ImageCarousel from '../components/common/ImageCarousel'
 import { trackProductView } from '../services/trackingService'
 import { useBrowserLocation } from '../hooks/useBrowserLocation'
+import AlsoViewed from '../components/tracking/AlsoViewed'
 
 /**
  * Product Detail Page
@@ -27,7 +28,7 @@ function ProductDetail() {
   }, [id, fetchProductById])
 
   // Track product view once per product load.
-  // If browser location is available, include it; otherwise track without it.
+  // Only track if location is granted. If denied, do not track at all.
   useEffect(() => {
     if (!currentProduct || !currentProduct.id) return
 
@@ -36,13 +37,20 @@ function ProductDetail() {
       return
     }
 
+    // Only track if location is granted
+    if (locationStatus === 'denied') {
+      // Location denied - do not track product views
+      return
+    }
+
+    // Location is granted - track with location if available
     if (location && typeof location.latitude === 'number' && typeof location.longitude === 'number') {
       trackProductView(currentProduct.id, {
         latitude: location.latitude,
         longitude: location.longitude,
       })
     } else {
-      // No location (denied or unavailable) – still track the view.
+      // Location granted but not available yet - track without location
       trackProductView(currentProduct.id)
     }
   }, [currentProduct?.id, locationStatus, location?.latitude, location?.longitude])
@@ -245,6 +253,14 @@ function ProductDetail() {
           </div>
         </div>
       </div>
+      
+      {/* Also Viewed Products Section */}
+      {currentProduct && currentProduct.id && (
+        <AlsoViewed
+          productId={currentProduct.id}
+          onProductClick={(id) => navigate(`/product/${id}`)}
+        />
+      )}
       
       {/* Additional Information Section */}
       <div className="mt-8 border-t border-neutral-200 pt-8">

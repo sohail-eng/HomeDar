@@ -8,6 +8,7 @@ from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django.db.models import Count, Max
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -271,19 +272,34 @@ class ProductViewTrackingAPIView(APIView):
         ).order_by("-viewed_at").first()
 
         if existing:
-            # Optionally update lat/lng if new info is provided
+            # Check if location changed
+            location_changed = False
             updated = False
+            
+            # Check if latitude changed
             if latitude is not None and existing.latitude != latitude:
                 existing.latitude = latitude
+                location_changed = True
                 updated = True
+            # Check if longitude changed
             if longitude is not None and existing.longitude != longitude:
                 existing.longitude = longitude
+                location_changed = True
                 updated = True
+            
             # Always refresh viewed_at for recency
             existing.viewed_at = now
-            update_fields = ["viewed_at"]
-            if updated:
-                update_fields.extend(["latitude", "longitude"])
+            
+            # If location changed, clear city and country (they're no longer accurate)
+            if location_changed:
+                existing.city = None
+                existing.country = None
+                update_fields = ["viewed_at", "latitude", "longitude", "city", "country"]
+            else:
+                update_fields = ["viewed_at"]
+                if updated:
+                    update_fields.extend(["latitude", "longitude"])
+            
             existing.save(update_fields=update_fields)
 
             response = Response({"success": True, "duplicate": True})
@@ -478,3 +494,132 @@ class PopularProductsAPIView(APIView):
                 "period": period_param,
             }
         )
+
+
+class AlsoViewedProductsAPIView(APIView):
+    """
+    Return products that were viewed by visitors who also viewed the specified product.
+    
+    GET /api/tracking/also-viewed/<product_id>/
+    Query params:
+    - limit: number of products to return (default: 20, max: 20)
+    - period: optional time filter - '30d', '90d' (default: '90d')
+    
+    Algorithm:
+    1. Find all distinct visitors who viewed the current product
+    2. Find all other products those visitors also viewed (excluding current product)
+    3. Count views per product and sort by count (desc), then by most recent view (desc)
+    4. Return top N products
+    """
+
+    default_limit = 20
+    default_period_days = 90
+    cookie_name = "visitor_id"
+
+    def get(self, request, product_id, *args, **kwargs):
+        from .models import Product, VisitorProfile
+
+        # Get the current product
+        try:
+            current_product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response(
+                {"error": "Product not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Parse limit parameter
+        limit = self.default_limit
+        try:
+            if "limit" in request.query_params:
+                limit = max(1, min(20, int(request.query_params["limit"])))
+        except (TypeError, ValueError):
+            pass
+
+        # Parse optional time period filter
+        period_param = request.query_params.get("period", "90d")
+        now = timezone.now()
+        if period_param == "30d":
+            since = now - timedelta(days=30)
+        else:
+            # default to 90 days
+            since = now - timedelta(days=self.default_period_days)
+
+        # Get current visitor's viewed products to exclude them
+        current_visitor_viewed_products = None
+        visitor_id = request.COOKIES.get(self.cookie_name)
+        if visitor_id:
+            try:
+                visitor = VisitorProfile.objects.get(visitor_id=visitor_id)
+                # Get all product IDs that the current visitor has viewed
+                current_visitor_viewed_products = ProductView.objects.filter(
+                    visitor=visitor
+                ).values_list("product_id", flat=True).distinct()
+            except VisitorProfile.DoesNotExist:
+                pass
+
+        # Step 1: Get all distinct visitors who viewed the current product (within time period)
+        visitors_who_viewed = (
+            ProductView.objects.filter(
+                product=current_product,
+                viewed_at__gte=since,
+            )
+            .values_list("visitor", flat=True)
+            .distinct()
+        )
+
+        # If no visitors viewed this product, return empty results
+        if not visitors_who_viewed:
+            return Response({"results": []})
+
+        # Step 2: Find all products viewed by those visitors (excluding current product and products current visitor has viewed)
+        # Step 3: Aggregate by product, count views, and get most recent view
+        also_viewed_aggregated = (
+            ProductView.objects.filter(
+                visitor__in=visitors_who_viewed,
+                viewed_at__gte=since,
+            )
+            .exclude(product=current_product)
+        )
+        
+        # Exclude products the current visitor has already viewed
+        if current_visitor_viewed_products is not None:
+            also_viewed_aggregated = also_viewed_aggregated.exclude(
+                product_id__in=current_visitor_viewed_products
+            )
+        
+        also_viewed_aggregated = (
+            also_viewed_aggregated
+            .values("product")
+            .annotate(
+                view_count=Count("id"),
+                last_viewed=Max("viewed_at"),
+            )
+            .order_by("-view_count", "-last_viewed")[:limit]
+        )
+
+        # Extract product IDs in order
+        product_ids = [item["product"] for item in also_viewed_aggregated]
+
+        if not product_ids:
+            return Response({"results": []})
+
+        # Fetch the actual Product objects with images prefetched
+        products = list(
+            Product.objects.filter(id__in=product_ids).prefetch_related("images")
+        )
+
+        # Preserve the order defined by the aggregation
+        products_by_id = {p.id: p for p in products}
+        ordered_products = [
+            products_by_id[pid] for pid in product_ids if pid in products_by_id
+        ]
+
+        # Serialize using RecentProductSerializer for consistency
+        serializer = RecentProductSerializer(
+            ordered_products,
+            many=True,
+            context={"request": request},
+        )
+
+        return Response({"results": serializer.data})

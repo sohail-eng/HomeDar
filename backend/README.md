@@ -21,6 +21,7 @@ Django REST Framework backend for the HomeDar e-commerce application.
 - Python 3.10 or higher
 - pip (Python package manager)
 - PostgreSQL (optional, for production)
+- Redis (required for Celery task queue)
 - Virtual environment (recommended)
 
 ## Installation
@@ -69,6 +70,10 @@ Django REST Framework backend for the HomeDar e-commerce application.
    # DB_PASSWORD=your-password
    # DB_HOST=localhost
    # DB_PORT=5432
+   
+   # Celery Configuration (optional - defaults to localhost)
+   # CELERY_BROKER_URL=redis://localhost:6379/0
+   # CELERY_RESULT_BACKEND=redis://localhost:6379/0
    ```
 
 3. **Generate a secret key (optional):**
@@ -139,6 +144,190 @@ pip install psycopg2-binary
    ```bash
    python manage.py runserver 8080
    ```
+
+## Celery Setup (Background Tasks)
+
+Celery is used for running scheduled background tasks, such as cleaning up old tracking data.
+
+### Prerequisites
+
+**Install Redis:**
+
+**On Ubuntu/Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install redis-server
+```
+
+**On macOS:**
+```bash
+brew install redis
+```
+
+**On Windows:**
+Download and install from: https://redis.io/download
+
+**Start Redis:**
+```bash
+# On Linux/Mac (if not running as service):
+redis-server
+
+# On Windows:
+redis-server.exe
+
+# Or start as a service (recommended for production)
+sudo systemctl start redis
+```
+
+### Configuration
+
+Celery is configured via environment variables in your `.env` file:
+
+```env
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/0
+```
+
+If not set, defaults to `redis://localhost:6379/0`.
+
+### Running Celery
+
+**Development (Single Command - Worker + Beat):**
+```bash
+celery -A HomeDar worker --beat --loglevel=info
+```
+
+**Production (Separate Processes):**
+
+1. **Start Celery Worker:**
+   ```bash
+   celery -A HomeDar worker --loglevel=info
+   ```
+
+2. **Start Celery Beat (Scheduler):**
+   ```bash
+   celery -A HomeDar beat --loglevel=info
+   ```
+
+**Using Process Managers (Production):**
+
+For production, use systemd, supervisor, or similar to manage Celery processes:
+
+**Example systemd service files:**
+
+`/etc/systemd/system/celery-worker.service`:
+```ini
+[Unit]
+Description=Celery Worker Service
+After=network.target redis.service
+
+[Service]
+Type=forking
+User=www-data
+Group=www-data
+EnvironmentFile=/path/to/.env
+WorkingDirectory=/path/to/backend
+ExecStart=/path/to/venv/bin/celery -A HomeDar worker --loglevel=info --logfile=/var/log/celery/worker.log
+ExecStop=/bin/kill -s TERM $MAINPID
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/systemd/system/celery-beat.service`:
+```ini
+[Unit]
+Description=Celery Beat Service
+After=network.target redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+EnvironmentFile=/path/to/.env
+WorkingDirectory=/path/to/backend
+ExecStart=/path/to/venv/bin/celery -A HomeDar beat --loglevel=info --logfile=/var/log/celery/beat.log
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Scheduled Tasks
+
+**Cleanup Old Product Views**
+- **Task**: `catalog.tasks.cleanup_old_product_views`
+- **Schedule**: Daily at midnight (00:00 UTC)
+- **Purpose**: Deletes `ProductView` records older than 30 days
+- **Logging**: Task execution and deletion counts are logged
+
+**Backfill Location from Coordinates**
+- **Task**: `catalog.tasks.backfill_location_from_coords`
+- **Schedule**: Every 5 minutes
+- **Purpose**: Backfills missing country/city data from latitude/longitude coordinates
+- **Process**:
+  1. Uses Redis lock to prevent concurrent execution
+  2. Finds `ProductView` records with lat/long but missing country OR city
+  3. Gets distinct lat/long pairs to minimize API calls
+  4. Calls reverse geocoding API for each unique coordinate pair
+  5. Updates both `ProductView` and `VisitorProfile` records with results
+- **Logging**: Task execution, processed coordinates, and update counts are logged
+
+### Testing Tasks
+
+**Test task manually:**
+```bash
+python manage.py shell
+```
+
+```python
+from catalog.tasks import cleanup_old_product_views
+
+# Run task synchronously (for testing)
+result = cleanup_old_product_views()
+print(result)
+
+# Or run asynchronously
+result = cleanup_old_product_views.delay()
+print(result.get())
+```
+
+**Check Celery Beat schedule:**
+```bash
+celery -A HomeDar beat --loglevel=info --dry-run
+```
+
+### Monitoring
+
+**View Celery logs:**
+- Worker logs show task execution
+- Beat logs show scheduled task triggers
+- Check application logs for task results
+
+**Monitor Redis:**
+```bash
+redis-cli
+> INFO
+> KEYS *
+```
+
+### Troubleshooting
+
+**Issue: Celery worker not connecting to Redis**
+- Ensure Redis is running: `redis-cli ping` (should return `PONG`)
+- Check `CELERY_BROKER_URL` in `.env` file
+- Verify Redis is accessible: `redis-cli -h localhost -p 6379`
+
+**Issue: Tasks not running on schedule**
+- Ensure Celery Beat is running
+- Check Celery Beat logs for errors
+- Verify task is in `CELERY_BEAT_SCHEDULE` in settings
+
+**Issue: Tasks failing**
+- Check worker logs for error messages
+- Verify database connection
+- Check task code for exceptions
 
 ## API Endpoints
 
@@ -399,6 +588,7 @@ backend/
 │   ├── apps.py                # App configuration
 │   ├── models.py              # Database models (includes VisitorProfile & ProductView)
 │   ├── serializers.py         # DRF serializers
+│   ├── tasks.py               # Celery background tasks (cleanup_old_product_views)
 │   ├── tests.py               # Test suite
 │   ├── urls.py                # URL routing
 │   ├── views.py               # API viewsets (includes tracking endpoints)
@@ -410,10 +600,11 @@ backend/
 │   └── migrations/            # Database migrations
 │       └── 0001_initial.py
 ├── HomeDar/                   # Project settings
-│   ├── __init__.py
+│   ├── __init__.py            # Celery initialization
+│   ├── celery.py              # Celery app configuration
 │   ├── settings/              # Split settings
 │   │   ├── __init__.py
-│   │   ├── base.py            # Base settings
+│   │   ├── base.py            # Base settings (includes Celery config)
 │   │   ├── development.py     # Development settings
 │   │   └── production.py      # Production settings
 │   ├── settings.py            # Backward compatibility
@@ -491,6 +682,9 @@ python manage.py check
 
 # Show all URLs
 python manage.py show_urls  # (requires django-extensions)
+
+# Run cleanup task manually (alternative to Celery)
+python manage.py cleanup_tracking_data --views-days=30
 ```
 
 ### Environment Variables Reference
@@ -507,6 +701,9 @@ python manage.py show_urls  # (requires django-extensions)
 | `DB_PORT` | Database port | `5432` |
 | `ALLOWED_HOSTS` | Allowed hosts (comma-separated) | `localhost` |
 | `CORS_ALLOWED_ORIGINS` | CORS allowed origins | Development defaults |
+| `CELERY_BROKER_URL` | Redis broker URL for Celery | `redis://localhost:6379/0` |
+| `CELERY_RESULT_BACKEND` | Redis result backend for Celery | `redis://localhost:6379/0` |
+| `CACHE_URL` | Redis cache URL (for task locks) | `redis://localhost:6379/1` |
 
 ### Troubleshooting
 

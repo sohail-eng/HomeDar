@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { trackProductView } from '../services/trackingService'
+import { useEffect, useState, useCallback } from 'react'
 
 // Keys in localStorage
 const CONSENT_KEY = 'location_consent' // 'granted' | 'denied'
@@ -38,11 +37,6 @@ function storeLocation(lat, lng) {
   }
 }
 
-function hasConsent() {
-  if (typeof window === 'undefined') return false
-  return window.localStorage.getItem(CONSENT_KEY) === 'granted'
-}
-
 function setConsent(value) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(CONSENT_KEY, value)
@@ -60,6 +54,7 @@ function hasMeaningfulChange(oldLoc, newLat, newLng) {
  * - Request browser geolocation once on load (if user has not explicitly denied)
  * - Store location in localStorage
  * - Only send location to backend when it changes meaningfully
+ * - Provide manual requestLocation() function for re-requesting permission
  *
  * Note:
  * - We include precise location in tracking payloads via trackProductView()
@@ -69,10 +64,54 @@ export function useBrowserLocation() {
   const [status, setStatus] = useState('idle') // idle | requesting | granted | denied
   const [location, setLocation] = useState(() => readStoredLocation())
 
+  const requestLocation = useCallback(() => {
+    if (typeof window === 'undefined') return
+
+    if (!('geolocation' in navigator)) {
+      setStatus('denied')
+      return
+    }
+
+    // Clear denied consent to allow re-request
+    if (window.localStorage.getItem(CONSENT_KEY) === 'denied') {
+      window.localStorage.removeItem(CONSENT_KEY)
+    }
+
+    setStatus('requesting')
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const roundedLat = Number(pos.coords.latitude.toFixed(4))
+        const roundedLng = Number(pos.coords.longitude.toFixed(4))
+
+        setConsent('granted')
+        setStatus('granted')
+
+        const previous = readStoredLocation()
+        if (hasMeaningfulChange(previous, roundedLat, roundedLng)) {
+          storeLocation(roundedLat, roundedLng)
+          setLocation({ latitude: roundedLat, longitude: roundedLng })
+        } else {
+          // No meaningful change; keep existing stored location.
+          setLocation(previous || { latitude: roundedLat, longitude: roundedLng })
+        }
+      },
+      () => {
+        setConsent('denied')
+        setStatus('denied')
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 10000,
+        maximumAge: 300000, // up to 5 minutes
+      }
+    )
+  }, [])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    // If user previously denied, do not request again.
+    // If user previously denied, do not request again automatically.
     if (window.localStorage.getItem(CONSENT_KEY) === 'denied') {
       setStatus('denied')
       return
@@ -121,7 +160,7 @@ export function useBrowserLocation() {
     )
   }, [])
 
-  return { status, location }
+  return { status, location, requestLocation }
 }
 
 export default useBrowserLocation

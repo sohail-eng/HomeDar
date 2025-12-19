@@ -2,13 +2,21 @@ import { useEffect, useState } from 'react'
 import PropTypes from 'prop-types'
 import { getPopularProducts } from '../../services/trackingService'
 import { Card } from '../common'
+import { useBrowserLocation } from '../../hooks/useBrowserLocation'
+import LocationPermissionBanner from './LocationPermissionBanner'
 
 function PopularInYourArea({ onProductClick }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [meta, setMeta] = useState({ country: null, period: null })
+  const { status: locationStatus, requestLocation } = useBrowserLocation()
 
   useEffect(() => {
+    // Only fetch products if location is granted
+    if (locationStatus !== 'granted') {
+      return
+    }
+
     let mounted = true
     const load = async () => {
       setLoading(true)
@@ -23,7 +31,25 @@ function PopularInYourArea({ onProductClick }) {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [locationStatus])
+
+  // Show banner if location is not granted (denied, idle, or requesting)
+  if (locationStatus === 'denied' || locationStatus === 'idle' || locationStatus === 'requesting') {
+    return (
+      <section className="mt-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xl font-semibold text-neutral-900">
+            Popular Near You
+          </h2>
+        </div>
+        <LocationPermissionBanner
+          onEnableLocation={requestLocation}
+          title="Popular Near You"
+          isRequesting={locationStatus === 'requesting'}
+        />
+      </section>
+    )
+  }
 
   if (loading) {
     return (
@@ -63,7 +89,7 @@ function PopularInYourArea({ onProductClick }) {
           Popular Near You{headingSuffix}
         </h2>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {items.map((product) => (
           <Card
             key={product.id}

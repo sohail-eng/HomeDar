@@ -242,7 +242,7 @@ class ProductViewAdmin(admin.ModelAdmin):
     """Admin interface for ProductView model."""
 
     list_display = ['visitor_short', 'product', 'country', 'city', 'viewed_at', 'latitude', 'longitude']
-    list_filter = ['country', 'city', 'product', 'viewed_at']
+    list_filter = ['viewed_at', 'country', 'city', 'product']
     search_fields = ['visitor__visitor_id', 'product__title', 'product__sku', 'city', 'country']
     readonly_fields = ['id', 'visitor', 'product', 'viewed_at']
     date_hierarchy = 'viewed_at'
@@ -256,6 +256,9 @@ class ProductViewAdmin(admin.ModelAdmin):
             'fields': ('country', 'city', 'latitude', 'longitude'),
         }),
     )
+
+    class Media:
+        js = ('admin/js/productview_date_hierarchy.js',)
 
     def visitor_short(self, obj):
         return obj.visitor_id_display

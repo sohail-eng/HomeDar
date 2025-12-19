@@ -6,6 +6,7 @@ These settings are shared between development and production environments.
 
 import environ
 from pathlib import Path
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -20,6 +21,8 @@ env = environ.Env(
     DB_PASSWORD=(str, ''),
     DB_HOST=(str, ''),
     DB_PORT=(str, ''),
+    CELERY_BROKER_URL=(str, 'redis://localhost:6379/0'),
+    CELERY_RESULT_BACKEND=(str, 'redis://localhost:6379/0'),
 )
 
 # Read .env file if it exists
@@ -121,6 +124,18 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Cache configuration (using Redis for Celery task locks)
+# Uses same Redis instance as Celery but different database (1 instead of 0)
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': env('CACHE_URL', default='redis://localhost:6379/1'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}
+
 # Django REST Framework configuration
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
@@ -203,6 +218,30 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': False,
         },
+    },
+}
+
+# Celery Configuration
+CELERY_BROKER_URL = env('CELERY_BROKER_URL')
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND')
+
+# Celery timezone
+CELERY_TIMEZONE = TIME_ZONE
+
+# Celery task serialization
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
+
+# Celery Beat Schedule
+CELERY_BEAT_SCHEDULE = {
+    'cleanup-old-product-views': {
+        'task': 'catalog.tasks.cleanup_old_product_views',
+        'schedule': crontab(hour=0, minute=0),  # Run daily at midnight (00:00 UTC)
+    },
+    'backfill-location-from-coords': {
+        'task': 'catalog.tasks.backfill_location_from_coords',
+        'schedule': crontab(minute='*/1'),  # Run every 5 minutes
     },
 }
 

@@ -1,25 +1,21 @@
 import { useEffect, useState } from 'react'
 import PropTypes from 'prop-types'
-import { getRecentProducts } from '../../services/trackingService'
+import { getAlsoViewedProducts } from '../../services/trackingService'
 import { Card } from '../common'
-import { useBrowserLocation } from '../../hooks/useBrowserLocation'
-import LocationPermissionBanner from './LocationPermissionBanner'
 
-function RecentlyViewed({ onProductClick }) {
+function AlsoViewed({ productId, onProductClick }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
-  const { status: locationStatus, requestLocation } = useBrowserLocation()
 
   useEffect(() => {
-    // Only fetch products if location is granted
-    if (locationStatus !== 'granted') {
+    if (!productId) {
       return
     }
 
     let mounted = true
     const load = async () => {
       setLoading(true)
-      const result = await getRecentProducts(20)
+      const result = await getAlsoViewedProducts(productId, { limit: 20 })
       if (mounted) {
         setItems(result.data || [])
         setLoading(false)
@@ -29,33 +25,15 @@ function RecentlyViewed({ onProductClick }) {
     return () => {
       mounted = false
     }
-  }, [locationStatus])
-
-  // Show banner if location is not granted (denied, idle, or requesting)
-  if (locationStatus === 'denied' || locationStatus === 'idle' || locationStatus === 'requesting') {
-    return (
-      <section className="mt-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xl font-semibold text-neutral-900">
-            Recently Viewed
-          </h2>
-        </div>
-        <LocationPermissionBanner
-          onEnableLocation={requestLocation}
-          title="Recently Viewed"
-          isRequesting={locationStatus === 'requesting'}
-        />
-      </section>
-    )
-  }
+  }, [productId])
 
   if (loading) {
     return (
-      <section className="mt-8">
+      <section className="mt-8 pt-8 border-t border-neutral-200">
         <h2 className="text-xl font-semibold text-neutral-900 mb-3">
-          Recently Viewed
+          Users who viewed this product also viewed
         </h2>
-        <p className="text-sm text-neutral-500">Loading your recently viewed products...</p>
+        <p className="text-sm text-neutral-500">Loading related products...</p>
       </section>
     )
   }
@@ -79,10 +57,10 @@ function RecentlyViewed({ onProductClick }) {
   }
 
   return (
-    <section className="mt-8">
+    <section className="mt-8 pt-8 border-t border-neutral-200">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-xl font-semibold text-neutral-900">
-          Recently Viewed
+          Users who viewed this product also viewed
         </h2>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -102,10 +80,10 @@ function RecentlyViewed({ onProductClick }) {
   )
 }
 
-RecentlyViewed.propTypes = {
+AlsoViewed.propTypes = {
+  productId: PropTypes.string.isRequired,
   onProductClick: PropTypes.func,
 }
 
-export default RecentlyViewed
-
+export default AlsoViewed
 

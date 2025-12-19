@@ -33,11 +33,11 @@ function Card({
       {...props}
     >
       {image && (
-        <div className="w-full h-48 bg-neutral-200 overflow-hidden">
+        <div className="w-full h-56 sm:h-48 md:h-40 bg-neutral-200 overflow-hidden">
           <img
             src={image}
             alt={imageAlt || title || 'Card image'}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain sm:object-cover"
             onError={(e) => {
               e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23e5e5e5" width="400" height="300"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E'
             }}
@@ -45,7 +45,7 @@ function Card({
         </div>
       )}
       {(title || subtitle || children) && (
-        <div className="p-4">
+        <div className="p-3">
           {title && (
             <h3 className="text-lg font-semibold text-neutral-900 mb-1">{title}</h3>
           )}

@@ -15,6 +15,7 @@ from .views import (
     ProductViewTrackingAPIView,
     RecentProductsAPIView,
     PopularProductsAPIView,
+    AlsoViewedProductsAPIView,
 )
 
 # Create a router and register viewsets
@@ -31,4 +32,5 @@ urlpatterns = [
     path('tracking/product-views/', csrf_exempt(ProductViewTrackingAPIView.as_view()), name='product-view-tracking'),
     path('tracking/recent-products/', RecentProductsAPIView.as_view(), name='recent-products'),
     path('tracking/popular-products/', PopularProductsAPIView.as_view(), name='popular-products'),
+    path('tracking/also-viewed/<uuid:product_id>/', AlsoViewedProductsAPIView.as_view(), name='also-viewed'),
 ]

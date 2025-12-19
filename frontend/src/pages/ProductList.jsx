@@ -680,10 +680,10 @@ function ProductList() {
       
       {/* Products Grid */}
       {loading && products.length === 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {[...Array(8)].map((_, i) => (
             <div key={i} className="bg-white rounded-lg shadow-md overflow-hidden animate-pulse">
-              <div className="w-full h-48 bg-neutral-200" />
+              <div className="w-full h-40 bg-neutral-200" />
               <div className="p-4 space-y-2">
                 <div className="h-4 bg-neutral-200 rounded w-3/4" />
                 <div className="h-4 bg-neutral-200 rounded w-1/2" />
@@ -693,7 +693,7 @@ function ProductList() {
         </div>
       ) : products.length > 0 ? (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
             {products.map((product) => (
               <Card
                 key={product.id}

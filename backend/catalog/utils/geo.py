@@ -8,6 +8,7 @@ wait of 60 seconds per lookup.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import Optional, Tuple
@@ -30,7 +31,6 @@ def get_client_ip(request: HttpRequest) -> Optional[str]:
     """
     x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
     if x_forwarded_for:
-        # X-Forwarded-For may contain multiple IPs: client, proxy1, proxy2, ...
         ip = x_forwarded_for.split(",")[0].strip()
         return ip or None
 
@@ -180,22 +180,6 @@ def ensure_visitor_profile_for_request(request: HttpRequest, visitor_id: str) ->
         profile.last_ip = ip
         update_fields.append("last_ip")
 
-        # If we don't yet have a country/city or the IP changed, try geolocation.
-        if not profile.country or not profile.city:
-            country, city, lat, lon = lookup_location(ip)
-            if country:
-                profile.country = country
-                update_fields.append("country")
-            if city:
-                profile.city = city
-                update_fields.append("city")
-            if lat is not None:
-                profile.latitude = lat
-                update_fields.append("latitude")
-            if lon is not None:
-                profile.longitude = lon
-                update_fields.append("longitude")
-
     profile.save(update_fields=update_fields)
     return profile
 
@@ -207,12 +191,15 @@ def lookup_location_from_coords(
     Reverse-geocode approximate location for given latitude/longitude.
 
     Returns:
-        (country_code, city_name)
+        (country_name, city_name)
 
     Uses a configurable endpoint, defaulting to a common free reverse
     geocoding service (e.g. Nominatim).
-    Includes retry logic: on 429/5xx, waits 1 second and retries,
-    up to 60 seconds total, to respect free API rate limits (1 req/sec).
+    
+    Rate limiting:
+    - Waits 1 second before each API call to respect free API rate limits (1 req/sec)
+    - Includes retry logic: on 429/5xx, waits 1 second and retries,
+      up to 60 seconds total wait time.
     """
     if latitude is None or longitude is None:
         return None, None
@@ -227,15 +214,19 @@ def lookup_location_from_coords(
         "lat": latitude,
         "lon": longitude,
         "format": "jsonv2",
+        "accept-language": "en",  # Force English language for results
     }
+    # Nominatim requires a descriptive User-Agent header
     headers = {
-        # Nominatim and similar services require a descriptive User-Agent.
-        # "User-Agent": "HomeDar-Tracking/1.0 (contact: admin@example.com)",
+        "User-Agent": "HomeDar-ECommerce/1.0 (Contact: info@homedar.com)"
     }
 
     max_total_wait_seconds = 60
+    sleep_before_request_seconds = 1  # Wait 1 second before each API call to respect rate limits
     sleep_per_retry_seconds = 1
+    request_timeout = 10  # Increased timeout to handle slow responses
     start_time = time.time()
+    first_request = True
 
     while True:
         elapsed = time.time() - start_time
@@ -248,9 +239,15 @@ def lookup_location_from_coords(
             )
             return None, None
 
+        # Wait 1 second before each API call to respect rate limits (1 req/sec)
+        # Skip wait for first request to avoid unnecessary delay on initial call
+        if not first_request:
+            time.sleep(sleep_before_request_seconds)
+        first_request = False
+
         try:
             response = requests.get(
-                endpoint, params=params, headers=headers, timeout=5
+                endpoint, params=params, headers=headers, timeout=request_timeout
             )
         except requests.RequestException as exc:
             logger.warning(
@@ -258,6 +255,15 @@ def lookup_location_from_coords(
                 latitude,
                 longitude,
                 exc,
+            )
+            return None, None
+
+        if response.status_code == 403:
+            logger.warning(
+                "Reverse geocoding API returned 403 Forbidden for coords (%s, %s). "
+                "This may indicate missing User-Agent header or API blocking.",
+                latitude,
+                longitude,
             )
             return None, None
 
@@ -293,17 +299,22 @@ def lookup_location_from_coords(
             return None, None
 
         address = data.get("address") or {}
-        # Prefer full country name
+        
+        # Log the complete address data for debugging
+        logger.info(
+            f"Reverse geocoding response for coords ({latitude}, {longitude}): "
+            f"{json.dumps(data, indent=2, ensure_ascii=False)}"
+        )
+        
         country_name = (address.get("country") or "").strip() or None
 
         city = (
             address.get("city")
             or address.get("town")
             or address.get("village")
+            or address.get("district")
             or address.get("state")
             or ""
         ).strip() or None
 
         return country_name, city
-
-
