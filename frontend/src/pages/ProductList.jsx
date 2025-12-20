@@ -483,6 +483,7 @@ function ProductList() {
                 <option value="title">Title: A to Z</option>
                 <option value="-title">Title: Z to A</option>
                 <option value="-updated_at">Recently Updated</option>
+                <option value="-likes_count">Most Liked</option>
               </select>
             </div>
             
@@ -565,18 +566,19 @@ function ProductList() {
           {/* Sort By Dropdown */}
           <div className="relative flex items-center">
             <select
-              value={localFilters.ordering}
-              onChange={(e) => setLocalFilters((prev) => ({ ...prev, ordering: e.target.value }))}
-              className="px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm bg-white cursor-pointer touch-manipulation min-w-[44px] min-h-[44px]"
-            >
-              <option value="-created_at">Newest First</option>
-              <option value="created_at">Oldest First</option>
-              <option value="price">Price: Low to High</option>
-              <option value="-price">Price: High to Low</option>
-              <option value="title">Title: A to Z</option>
-              <option value="-title">Title: Z to A</option>
-              <option value="-updated_at">Recently Updated</option>
-            </select>
+                value={localFilters.ordering}
+                onChange={(e) => setLocalFilters((prev) => ({ ...prev, ordering: e.target.value }))}
+                className="px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm bg-white cursor-pointer touch-manipulation min-w-[44px] min-h-[44px]"
+              >
+                <option value="-created_at">Newest First</option>
+                <option value="created_at">Oldest First</option>
+                <option value="price">Price: Low to High</option>
+                <option value="-price">Price: High to Low</option>
+                <option value="title">Title: A to Z</option>
+                <option value="-title">Title: Z to A</option>
+                <option value="-updated_at">Recently Updated</option>
+                <option value="-likes_count">Most Liked</option>
+              </select>
           </div>
           
           {getActiveFiltersCount() > 0 && (

@@ -72,6 +72,14 @@ function Footer() {
               </li>
               <li>
                 <Link
+                  to="/favorites"
+                  className="text-sm text-neutral-400 hover:text-primary-400 transition-colors"
+                >
+                  Favorites
+                </Link>
+              </li>
+              <li>
+                <Link
                   to="/contact"
                   className="text-sm text-neutral-400 hover:text-primary-400 transition-colors"
                 >

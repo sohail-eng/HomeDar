@@ -304,6 +304,56 @@ class ProductView(models.Model):
         return str(self.visitor.visitor_id)[:8]
 
 
+class ProductLike(models.Model):
+    """
+    A like on a product by an anonymous visitor.
+    
+    Each visitor can like a product only once (enforced by unique_together).
+    """
+    
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    visitor = models.ForeignKey(
+        VisitorProfile,
+        on_delete=models.CASCADE,
+        related_name="product_likes",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="likes",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Timestamp when the product was liked.",
+    )
+
+    class Meta:
+        verbose_name = "Product Like"
+        verbose_name_plural = "Product Likes"
+        ordering = ["-created_at"]
+        unique_together = [["visitor", "product"]]
+        indexes = [
+            models.Index(fields=["visitor", "created_at"]),
+            models.Index(fields=["product", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.visitor_id_display} liked {self.product}"
+
+    @property
+    def visitor_id_display(self) -> str:
+        """
+        Shortened visitor id for readability (first 8 chars if UUID-like).
+        """
+        if not self.visitor or not self.visitor.visitor_id:
+            return "unknown"
+        return str(self.visitor.visitor_id)[:8]
+
+
 @receiver(post_save, sender=ProductImage)
 def ensure_main_image_after_save(sender, instance, created, **kwargs):
     """Ensure at least one main image exists per product after saving."""

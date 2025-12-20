@@ -103,7 +103,7 @@ export const getPopularProducts = async (options = {}) => {
  * 
  * @param {string} productId - Product UUID
  * @param {Object} options
- * @param {number} [options.limit] - Optional limit (default: 12, max: 20)
+ * @param {number} [options.limit] - Optional limit (default: 10, max: 10)
  * @param {string} [options.period] - Optional time period: '30d' or '90d' (default: '90d')
  */
 export const getAlsoViewedProducts = async (productId, options = {}) => {
@@ -135,11 +135,122 @@ export const getAlsoViewedProducts = async (productId, options = {}) => {
   }
 }
 
+/**
+ * Toggle like/unlike for a product.
+ * 
+ * @param {string} productId - Product UUID
+ * @returns {Promise<{success: boolean, liked: boolean, product_id: string}>}
+ */
+export const toggleProductLike = async (productId) => {
+  try {
+    if (!productId) {
+      return {
+        success: false,
+        liked: false,
+        product_id: null,
+      }
+    }
+
+    const visitorId = getOrCreateVisitorId()
+    const payload = {
+      product_id: productId,
+      visitor_id: visitorId,
+    }
+
+    const response = await api.post('/tracking/product-like/', payload)
+    return {
+      success: true,
+      liked: response.data.liked || false,
+      product_id: response.data.product_id || productId,
+      like_count: response.data.like_count || 0,
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Failed to toggle product like:', error)
+    }
+    return {
+      success: false,
+      liked: false,
+      product_id: productId,
+    }
+  }
+}
+
+/**
+ * Check if the current visitor has liked a product.
+ * 
+ * @param {string} productId - Product UUID
+ * @returns {Promise<{success: boolean, liked: boolean, product_id: string}>}
+ */
+export const checkProductLike = async (productId) => {
+  try {
+    if (!productId) {
+      return {
+        success: false,
+        liked: false,
+        product_id: null,
+      }
+    }
+
+    getOrCreateVisitorId() // Ensure visitor_id cookie exists
+    const response = await api.get(`/tracking/product-like/${productId}/`)
+    return {
+      success: true,
+      liked: response.data.liked || false,
+      product_id: response.data.product_id || productId,
+      like_count: response.data.like_count || 0,
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Failed to check product like:', error)
+    }
+    return {
+      success: false,
+      liked: false,
+      product_id: productId,
+    }
+  }
+}
+
+/**
+ * Get favorite (liked) products for the current visitor.
+ * 
+ * @param {Object} options
+ * @param {number} [options.limit] - Optional limit (default: 50, max: 100)
+ * @returns {Promise<{success: boolean, data: Array, count: number}>}
+ */
+export const getFavoriteProducts = async (options = {}) => {
+  try {
+    getOrCreateVisitorId() // Ensure visitor_id cookie exists
+    const params = {}
+    if (options.limit) params.limit = options.limit
+
+    const response = await api.get('/tracking/favorite-products/', { params })
+    return {
+      success: true,
+      data: response.data.results || [],
+      count: response.data.count || 0,
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Failed to fetch favorite products:', error)
+    }
+    return {
+      success: false,
+      data: [],
+      count: 0,
+    }
+  }
+}
+
 export default {
   trackProductView,
   getRecentProducts,
   getPopularProducts,
   getAlsoViewedProducts,
+  toggleProductLike,
+  checkProductLike,
+  getFavoriteProducts,
 }
 
 

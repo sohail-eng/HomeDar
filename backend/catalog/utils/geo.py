@@ -8,7 +8,6 @@ wait of 60 seconds per lookup.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from typing import Optional, Tuple
@@ -299,12 +298,6 @@ def lookup_location_from_coords(
             return None, None
 
         address = data.get("address") or {}
-        
-        # Log the complete address data for debugging
-        logger.info(
-            f"Reverse geocoding response for coords ({latitude}, {longitude}): "
-            f"{json.dumps(data, indent=2, ensure_ascii=False)}"
-        )
         
         country_name = (address.get("country") or "").strip() or None
 

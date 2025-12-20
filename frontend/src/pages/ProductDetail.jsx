@@ -10,6 +10,7 @@ import ImageCarousel from '../components/common/ImageCarousel'
 import { trackProductView } from '../services/trackingService'
 import { useBrowserLocation } from '../hooks/useBrowserLocation'
 import AlsoViewed from '../components/tracking/AlsoViewed'
+import LikeButton from '../components/tracking/LikeButton'
 
 /**
  * Product Detail Page
@@ -161,7 +162,7 @@ function ProductDetail() {
       {/* Product Detail Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Image Gallery */}
-        <div>
+        <div className="relative">
           <ImageCarousel
             images={images}
             showDots={true}
@@ -169,6 +170,10 @@ function ProductDetail() {
             enableSwipe={true}
             autoPlay={false}
           />
+          {/* Like Button - Only show if location is granted */}
+          {locationStatus === 'granted' && currentProduct?.id && (
+            <LikeButton productId={currentProduct.id} />
+          )}
         </div>
         
         {/* Product Information */}

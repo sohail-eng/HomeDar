@@ -19,7 +19,7 @@ function RecentlyViewed({ onProductClick }) {
     let mounted = true
     const load = async () => {
       setLoading(true)
-      const result = await getRecentProducts(20)
+      const result = await getRecentProducts(10)
       if (mounted) {
         setItems(result.data || [])
         setLoading(false)

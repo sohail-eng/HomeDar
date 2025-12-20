@@ -241,7 +241,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     'backfill-location-from-coords': {
         'task': 'catalog.tasks.backfill_location_from_coords',
-        'schedule': crontab(minute='*/1'),  # Run every 5 minutes
+        'schedule': crontab(minute='*/5'),  # Run every 5 minutes
     },
 }
 

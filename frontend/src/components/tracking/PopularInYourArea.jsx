@@ -20,7 +20,7 @@ function PopularInYourArea({ onProductClick }) {
     let mounted = true
     const load = async () => {
       setLoading(true)
-      const result = await getPopularProducts({ limit: 20 })
+      const result = await getPopularProducts({ limit: 10 })
       if (mounted) {
         setItems(result.data || [])
         setMeta({ country: result.country, period: result.period })

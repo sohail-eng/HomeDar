@@ -11,6 +11,7 @@ from .models import (
     ProductImage,
     ContactUs,
     ProductView,
+    ProductLike,
 )
 
 
@@ -209,5 +210,28 @@ class RecentProductSerializer(ProductListSerializer):
 
     class Meta(ProductListSerializer.Meta):
         model = Product
+
+
+class ProductLikeToggleSerializer(serializers.Serializer):
+    """
+    Serializer for toggling product like/unlike.
+    
+    Accepts:
+    - product_id (required, UUID as string)
+    """
+    
+    product_id = serializers.UUIDField()
+    
+    def validate_product_id(self, value):
+        """Ensure the referenced product exists."""
+        from .models import Product  # Local import to avoid circular refs
+        
+        try:
+            product = Product.objects.get(id=value)
+        except Product.DoesNotExist:
+            raise serializers.ValidationError("Product not found.")
+        # Attach product instance for use in the view
+        self.context["product"] = product
+        return value
 
 

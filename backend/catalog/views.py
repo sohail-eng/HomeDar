@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.filters import OrderingFilter, SearchFilter
 
-from .models import Category, SubCategory, Product, ProductImage, ContactUs, ProductView
+from .models import Category, SubCategory, Product, ProductImage, ContactUs, ProductView, ProductLike
 from .serializers import (
     CategorySerializer,
     SubCategorySerializer,
@@ -24,6 +24,7 @@ from .serializers import (
     ContactUsSerializer,
     ProductViewCreateSerializer,
     RecentProductSerializer,
+    ProductLikeToggleSerializer,
 )
 from .utils.geo import get_client_ip, ensure_visitor_profile_for_request
 
@@ -74,7 +75,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Product.objects.prefetch_related('subcategories', 'images').all()
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['title', 'description']  # DRF SearchFilter is case-insensitive by default
-    ordering_fields = ['price', 'created_at', 'updated_at', 'title']
+    ordering_fields = ['price', 'created_at', 'updated_at', 'title', 'likes_count']
     ordering = ['-created_at']  # Default ordering: newest first
     
     def get_serializer_class(self):
@@ -92,8 +93,19 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         - created_at_after, created_at_before: date range
         - updated_at_after, updated_at_before: date range
         - subcategories: filter by subcategory IDs (comma-separated)
+        - ordering: supports likes_count for ordering by favorite count
         """
         queryset = super().get_queryset()
+        
+        # Check if ordering by likes_count is requested
+        ordering_param = self.request.query_params.get('ordering', None)
+        needs_likes_count = ordering_param and ('likes_count' in ordering_param or '-likes_count' in ordering_param)
+        
+        # Annotate likes_count if needed for ordering
+        if needs_likes_count:
+            queryset = queryset.annotate(
+                likes_count=Count('likes', distinct=True)
+            )
         
         # Filter by SKU (case-insensitive partial match)
         sku = self.request.query_params.get('sku', None)
@@ -344,7 +356,7 @@ class RecentProductsAPIView(APIView):
     """
 
     cookie_name = "visitor_id"
-    default_limit = 20
+    default_limit = 10
 
     def get(self, request, *args, **kwargs):
         visitor_id = request.COOKIES.get(self.cookie_name)
@@ -403,7 +415,7 @@ class PopularProductsAPIView(APIView):
     """
 
     cookie_name = "visitor_id"
-    default_limit = 20
+    default_limit = 10
 
     def get(self, request, *args, **kwargs):
         from django.db.models import Count, Max, Case, When, IntegerField
@@ -502,7 +514,7 @@ class AlsoViewedProductsAPIView(APIView):
     
     GET /api/tracking/also-viewed/<product_id>/
     Query params:
-    - limit: number of products to return (default: 20, max: 20)
+    - limit: number of products to return (default: 10, max: 10)
     - period: optional time filter - '30d', '90d' (default: '90d')
     
     Algorithm:
@@ -512,7 +524,7 @@ class AlsoViewedProductsAPIView(APIView):
     4. Return top N products
     """
 
-    default_limit = 20
+    default_limit = 10
     default_period_days = 90
     cookie_name = "visitor_id"
 
@@ -532,7 +544,7 @@ class AlsoViewedProductsAPIView(APIView):
         limit = self.default_limit
         try:
             if "limit" in request.query_params:
-                limit = max(1, min(20, int(request.query_params["limit"])))
+                limit = max(1, min(10, int(request.query_params["limit"])))
         except (TypeError, ValueError):
             pass
 
@@ -623,3 +635,228 @@ class AlsoViewedProductsAPIView(APIView):
         )
 
         return Response({"results": serializer.data})
+
+
+class ProductLikeToggleAPIView(APIView):
+    """
+    Toggle like/unlike for a product.
+    
+    POST /api/tracking/product-like/
+    Body: { "product_id": "uuid" }
+    
+    Returns: { "liked": true/false, "product_id": "uuid" }
+    
+    - Uses visitor_id from cookie
+    - Creates like if it doesn't exist (like)
+    - Deletes like if it exists (unlike)
+    """
+    
+    authentication_classes = []
+    cookie_name = "visitor_id"
+    
+    @method_decorator(csrf_exempt, name="dispatch")
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+    
+    def post(self, request, *args, **kwargs):
+        import uuid
+        
+        serializer = ProductLikeToggleSerializer(
+            data=request.data,
+            context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        
+        product = serializer.context.get("product")
+        
+        # Get visitor_id from cookie or payload
+        payload_visitor_id = request.data.get("visitor_id")
+        visitor_id = payload_visitor_id or request.COOKIES.get(self.cookie_name)
+        
+        if not visitor_id:
+            return Response(
+                {"error": "Visitor ID required. Please enable cookies."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # Ensure visitor profile exists
+        visitor_profile = ensure_visitor_profile_for_request(request, visitor_id)
+        if not visitor_profile:
+            return Response(
+                {"error": "Failed to create or retrieve visitor profile."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        
+        # Check if like already exists
+        like_exists = ProductLike.objects.filter(
+            visitor=visitor_profile,
+            product=product
+        ).exists()
+        
+        if like_exists:
+            # Unlike: delete the like
+            ProductLike.objects.filter(
+                visitor=visitor_profile,
+                product=product
+            ).delete()
+            liked = False
+        else:
+            # Like: create the like
+            ProductLike.objects.create(
+                visitor=visitor_profile,
+                product=product
+            )
+            liked = True
+        
+        # Get updated like count
+        like_count = ProductLike.objects.filter(product=product).count()
+        
+        # Set cookie for future requests
+        response = Response({
+            "liked": liked,
+            "product_id": str(product.id),
+            "like_count": like_count,
+        })
+        max_age = 60 * 60 * 24 * 365
+        response.set_cookie(
+            self.cookie_name,
+            visitor_id,
+            max_age=max_age,
+            httponly=False,
+            samesite="Lax"
+        )
+        
+        return response
+    
+    def get(self, request, product_id, *args, **kwargs):
+        """
+        Check if the current visitor has liked a product.
+        
+        GET /api/tracking/product-like/<product_id>/
+        
+        Returns: { "liked": true/false, "product_id": "uuid" }
+        """
+        from .models import Product
+        
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response(
+                {"error": "Product not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        visitor_id = request.COOKIES.get(self.cookie_name)
+        if not visitor_id:
+            return Response({
+                "liked": False,
+                "product_id": str(product.id),
+            })
+        
+        try:
+            from .models import VisitorProfile
+            visitor_profile = VisitorProfile.objects.get(visitor_id=visitor_id)
+            liked = ProductLike.objects.filter(
+                visitor=visitor_profile,
+                product=product
+            ).exists()
+        except VisitorProfile.DoesNotExist:
+            liked = False
+        
+        # Get like count
+        like_count = ProductLike.objects.filter(product=product).count()
+        
+        return Response({
+            "liked": liked,
+            "product_id": str(product.id),
+            "like_count": like_count,
+        })
+
+
+class FavoriteProductsAPIView(APIView):
+    """
+    Get all products liked by the current visitor.
+    
+    GET /api/tracking/favorite-products/
+    Query params:
+    - limit: number of products to return (default: 50, max: 100)
+    
+    Returns: { "results": [products], "count": number }
+    
+    - Uses visitor_id from cookie
+    - Returns empty list if visitor not found or no likes
+    """
+    
+    authentication_classes = []
+    cookie_name = "visitor_id"
+    default_limit = 50
+    
+    def get(self, request, *args, **kwargs):
+        from .models import Product
+        
+        # Parse limit parameter
+        limit = self.default_limit
+        try:
+            if "limit" in request.query_params:
+                limit = max(1, min(100, int(request.query_params["limit"])))
+        except (TypeError, ValueError):
+            pass
+        
+        visitor_id = request.COOKIES.get(self.cookie_name)
+        if not visitor_id:
+            return Response({
+                "results": [],
+                "count": 0,
+            })
+        
+        try:
+            from .models import VisitorProfile
+            visitor_profile = VisitorProfile.objects.get(visitor_id=visitor_id)
+            
+            # Get all liked products for this visitor, ordered by most recently liked
+            # Get both product_id and created_at to preserve order
+            liked_products_data = (
+                ProductLike.objects.filter(visitor=visitor_profile)
+                .select_related("product")
+                .order_by("-created_at")
+                .values("product_id", "created_at")
+            )
+            
+            if not liked_products_data:
+                return Response({
+                    "results": [],
+                    "count": 0,
+                })
+            
+            # Extract product IDs in order (most recent first)
+            product_ids = [item["product_id"] for item in liked_products_data]
+            
+            # Fetch the actual Product objects with images prefetched
+            products = list(
+                Product.objects.filter(id__in=product_ids)
+                .prefetch_related("images")
+            )
+            
+            # Preserve the order defined by the likes (most recent first)
+            products_by_id = {p.id: p for p in products}
+            ordered_products = [
+                products_by_id[pid] for pid in product_ids if pid in products_by_id
+            ][:limit]
+            
+            # Serialize using RecentProductSerializer for consistency
+            serializer = RecentProductSerializer(
+                ordered_products,
+                many=True,
+                context={"request": request},
+            )
+            
+            return Response({
+                "results": serializer.data,
+                "count": len(ordered_products),
+            })
+            
+        except VisitorProfile.DoesNotExist:
+            return Response({
+                "results": [],
+                "count": 0,
+            })

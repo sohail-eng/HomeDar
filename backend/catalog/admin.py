@@ -12,6 +12,7 @@ from .models import (
     ContactUs,
     VisitorProfile,
     ProductView,
+    ProductLike,
 )
 
 
@@ -259,6 +260,29 @@ class ProductViewAdmin(admin.ModelAdmin):
 
     class Media:
         js = ('admin/js/productview_date_hierarchy.js',)
+
+    def visitor_short(self, obj):
+        return obj.visitor_id_display
+
+    visitor_short.short_description = 'Visitor'
+
+
+@admin.register(ProductLike)
+class ProductLikeAdmin(admin.ModelAdmin):
+    """Admin interface for ProductLike model."""
+
+    list_display = ['visitor_short', 'product', 'created_at']
+    list_filter = ['created_at', 'product']
+    search_fields = ['visitor__visitor_id', 'product__title', 'product__sku']
+    readonly_fields = ['id', 'visitor', 'product', 'created_at']
+    date_hierarchy = 'created_at'
+    list_select_related = ['visitor', 'product']
+
+    fieldsets = (
+        ('Like', {
+            'fields': ('id', 'visitor', 'product', 'created_at'),
+        }),
+    )
 
     def visitor_short(self, obj):
         return obj.visitor_id_display

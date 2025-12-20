@@ -15,7 +15,7 @@ function AlsoViewed({ productId, onProductClick }) {
     let mounted = true
     const load = async () => {
       setLoading(true)
-      const result = await getAlsoViewedProducts(productId, { limit: 20 })
+      const result = await getAlsoViewedProducts(productId, { limit: 10 })
       if (mounted) {
         setItems(result.data || [])
         setLoading(false)

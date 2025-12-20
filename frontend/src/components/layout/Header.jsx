@@ -12,6 +12,7 @@ function Header() {
   
   const navLinks = [
     { path: '/', label: 'Products' },
+    { path: '/favorites', label: 'Favorites' },
     { path: '/contact', label: 'Contact Us' },
   ]
   
