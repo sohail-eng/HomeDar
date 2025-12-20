@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import Layout from '../components/layout/Layout'
+import { ScrollToTop } from '../components/common'
 import ProductList from './ProductList'
 import ProductDetail from './ProductDetail'
 import ContactUs from './ContactUs'
@@ -9,6 +10,7 @@ import NotFound from './NotFound'
 function AppRoutes() {
   return (
     <Layout>
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<ProductList />} />
         <Route path="/product/:id" element={<ProductDetail />} />

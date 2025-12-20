@@ -12,6 +12,7 @@ from .models import (
     ContactUs,
     ProductView,
     ProductLike,
+    ProductReview,
 )
 
 
@@ -233,5 +234,55 @@ class ProductLikeToggleSerializer(serializers.Serializer):
         # Attach product instance for use in the view
         self.context["product"] = product
         return value
+
+
+class ProductReviewSerializer(serializers.ModelSerializer):
+    """
+    Serializer for ProductReview model.
+    Used for listing reviews (read-only fields).
+    """
+    reviewer_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProductReview
+        fields = ['id', 'reviewer_name', 'review_text', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_reviewer_name(self, obj):
+        """Return reviewer name or 'Anonymous' if not provided."""
+        return obj.reviewer_name
+
+
+class ProductReviewCreateSerializer(serializers.Serializer):
+    """
+    Serializer for creating ProductReview.
+    
+    Accepts:
+    - name (optional, string)
+    - review_text (required, string)
+    """
+    
+    name = serializers.CharField(
+        max_length=200,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
+    review_text = serializers.CharField(
+        required=True,
+        allow_blank=False,
+    )
+    
+    def validate_review_text(self, value):
+        """Ensure review text is not empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Review text cannot be empty.")
+        return value.strip()
+    
+    def validate_name(self, value):
+        """Clean name if provided."""
+        if value:
+            return value.strip()
+        return None
 
 

@@ -354,6 +354,67 @@ class ProductLike(models.Model):
         return str(self.visitor.visitor_id)[:8]
 
 
+class ProductReview(models.Model):
+    """
+    A review for a product by an anonymous visitor.
+    
+    - name is optional (can be anonymous)
+    - review_text is required
+    - Each visitor can leave multiple reviews for different products
+    """
+    
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    visitor = models.ForeignKey(
+        VisitorProfile,
+        on_delete=models.CASCADE,
+        related_name="product_reviews",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="reviews",
+    )
+    name = models.CharField(
+        max_length=200,
+        null=True,
+        blank=True,
+        help_text="Optional reviewer name (can be anonymous).",
+    )
+    review_text = models.TextField(
+        help_text="Review content (required).",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Timestamp when the review was created.",
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="Timestamp when the review was last updated.",
+    )
+
+    class Meta:
+        verbose_name = "Product Review"
+        verbose_name_plural = "Product Reviews"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["product", "created_at"]),
+            models.Index(fields=["visitor", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        reviewer_name = self.name or "Anonymous"
+        return f"{reviewer_name} reviewed {self.product}"
+
+    @property
+    def reviewer_name(self) -> str:
+        """Return reviewer name or 'Anonymous' if not provided."""
+        return self.name or "Anonymous"
+
+
 @receiver(post_save, sender=ProductImage)
 def ensure_main_image_after_save(sender, instance, created, **kwargs):
     """Ensure at least one main image exists per product after saving."""

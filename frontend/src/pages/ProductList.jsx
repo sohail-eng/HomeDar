@@ -536,7 +536,7 @@ function ProductList() {
         </div>
         
         {/* Mobile/Tablet: Min, Max, Sort on same line */}
-        <div className="flex lg:hidden gap-2 items-center w-full">
+        <div className="flex flex-wrap lg:hidden gap-2 items-center w-full">
           {/* Price Range */}
           <div className="flex gap-2 items-center">
             <Input
@@ -564,11 +564,11 @@ function ProductList() {
           </div>
           
           {/* Sort By Dropdown */}
-          <div className="relative flex items-center">
+          <div className="relative flex items-center max-[360px]:w-full min-[361px]:flex-1">
             <select
                 value={localFilters.ordering}
                 onChange={(e) => setLocalFilters((prev) => ({ ...prev, ordering: e.target.value }))}
-                className="px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm bg-white cursor-pointer touch-manipulation min-w-[44px] min-h-[44px]"
+                className="px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm bg-white cursor-pointer touch-manipulation min-w-[44px] min-h-[44px] w-full"
               >
                 <option value="-created_at">Newest First</option>
                 <option value="created_at">Oldest First</option>

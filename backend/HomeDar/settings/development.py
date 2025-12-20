@@ -7,7 +7,9 @@ from .base import *
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+# ALLOWED_HOSTS can be set via ALLOWED_HOSTS env variable (comma-separated list)
+# Default includes common localhost variants for development
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1', '0.0.0.0'])
 
 # Database configuration
 # Default to SQLite, but can use PostgreSQL if credentials are provided

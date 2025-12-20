@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.filters import OrderingFilter, SearchFilter
 
-from .models import Category, SubCategory, Product, ProductImage, ContactUs, ProductView, ProductLike
+from .models import Category, SubCategory, Product, ProductImage, ContactUs, ProductView, ProductLike, ProductReview
 from .serializers import (
     CategorySerializer,
     SubCategorySerializer,
@@ -25,6 +25,8 @@ from .serializers import (
     ProductViewCreateSerializer,
     RecentProductSerializer,
     ProductLikeToggleSerializer,
+    ProductReviewSerializer,
+    ProductReviewCreateSerializer,
 )
 from .utils.geo import get_client_ip, ensure_visitor_profile_for_request
 
@@ -860,3 +862,109 @@ class FavoriteProductsAPIView(APIView):
                 "results": [],
                 "count": 0,
             })
+
+
+class ProductReviewsAPIView(APIView):
+    """
+    Get all reviews for a product.
+    
+    GET /api/products/<product_id>/reviews/
+    
+    Returns: { "results": [reviews], "count": number }
+    """
+    
+    authentication_classes = []
+    
+    def get(self, request, product_id, *args, **kwargs):
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response(
+                {"error": "Product not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        reviews = ProductReview.objects.filter(product=product).order_by("-created_at")
+        serializer = ProductReviewSerializer(reviews, many=True, context={"request": request})
+        
+        return Response({
+            "results": serializer.data,
+            "count": reviews.count(),
+        })
+
+
+class ProductReviewCreateAPIView(APIView):
+    """
+    Create a review for a product.
+    
+    POST /api/products/<product_id>/reviews/
+    Body: { "name": "optional string", "review_text": "required string" }
+    
+    Returns: { "id": "uuid", "reviewer_name": "string", "review_text": "string", "created_at": "datetime" }
+    
+    - Uses visitor_id from cookie
+    - Requires location to be granted (same as other tracking features)
+    """
+    
+    authentication_classes = []
+    cookie_name = "visitor_id"
+    
+    @method_decorator(csrf_exempt, name="dispatch")
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+    
+    def post(self, request, product_id, *args, **kwargs):
+        import uuid
+        
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response(
+                {"error": "Product not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        serializer = ProductReviewCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Get visitor_id from cookie or payload
+        payload_visitor_id = request.data.get("visitor_id")
+        visitor_id = payload_visitor_id or request.COOKIES.get(self.cookie_name)
+        
+        if not visitor_id:
+            return Response(
+                {"error": "Visitor ID required. Please enable cookies and location."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # Ensure visitor profile exists
+        visitor_profile = ensure_visitor_profile_for_request(request, visitor_id)
+        if not visitor_profile:
+            return Response(
+                {"error": "Failed to create or retrieve visitor profile."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        
+        # Create the review
+        review = ProductReview.objects.create(
+            visitor=visitor_profile,
+            product=product,
+            name=serializer.validated_data.get("name"),
+            review_text=serializer.validated_data.get("review_text"),
+        )
+        
+        # Serialize and return
+        response_serializer = ProductReviewSerializer(review, context={"request": request})
+        
+        # Set cookie for future requests
+        response = Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        max_age = 60 * 60 * 24 * 365
+        response.set_cookie(
+            self.cookie_name,
+            visitor_id,
+            max_age=max_age,
+            httponly=False,
+            samesite="Lax"
+        )
+        
+        return response

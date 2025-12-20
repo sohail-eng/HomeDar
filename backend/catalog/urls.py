@@ -18,6 +18,8 @@ from .views import (
     AlsoViewedProductsAPIView,
     ProductLikeToggleAPIView,
     FavoriteProductsAPIView,
+    ProductReviewsAPIView,
+    ProductReviewCreateAPIView,
 )
 
 # Create a router and register viewsets
@@ -39,4 +41,7 @@ urlpatterns = [
     path('tracking/product-like/', csrf_exempt(ProductLikeToggleAPIView.as_view()), name='product-like-toggle'),
     path('tracking/product-like/<uuid:product_id>/', ProductLikeToggleAPIView.as_view(), name='product-like-check'),
     path('tracking/favorite-products/', FavoriteProductsAPIView.as_view(), name='favorite-products'),
+    # Review endpoints
+    path('products/<uuid:product_id>/reviews/', ProductReviewsAPIView.as_view(), name='product-reviews'),
+    path('products/<uuid:product_id>/reviews/create/', csrf_exempt(ProductReviewCreateAPIView.as_view()), name='product-review-create'),
 ]

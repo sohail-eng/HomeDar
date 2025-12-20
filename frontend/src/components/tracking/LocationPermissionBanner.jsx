@@ -4,9 +4,50 @@ import { Button } from '../common'
 /**
  * Location Permission Banner
  * Displays a friendly message asking users to enable location access
- * for personalized product recommendations.
+ * with context-specific messaging based on the title prop.
  */
 function LocationPermissionBanner({ onEnableLocation, title = 'Recently Viewed', isRequesting = false }) {
+  // Get context-specific messages based on title
+  const getMessages = (title) => {
+    const titleLower = (title || '').toLowerCase()
+    
+    if (titleLower.includes('recently viewed') || titleLower.includes('recent')) {
+      return {
+        heading: 'Enable Location to See Your Recently Viewed Products',
+        description: 'Allow location access to track and display the products you\'ve recently viewed. We\'ll help you quickly find items you were interested in!',
+      }
+    }
+    
+    if (titleLower.includes('popular') || titleLower.includes('near you')) {
+      return {
+        heading: 'Enable Location to Discover Popular Products Near You',
+        description: 'Get personalized product recommendations based on your location! We\'ll show you products that are trending in your area and help you discover what others nearby are viewing.',
+      }
+    }
+    
+    if (titleLower.includes('review') || titleLower.includes('write')) {
+      return {
+        heading: 'Enable Location to Write a Review',
+        description: 'Allow location access to share your thoughts and help other customers make informed decisions. Your location helps us provide better product recommendations.',
+      }
+    }
+    
+    if (titleLower.includes('favorite') || titleLower.includes('favourite')) {
+      return {
+        heading: 'Enable Location to Access Your Favorites',
+        description: 'Allow location access to view and manage your favorite products. We\'ll help you keep track of items you love and provide personalized recommendations.',
+      }
+    }
+    
+    // Default fallback
+    return {
+      heading: 'Enable Location for Personalized Recommendations',
+      description: 'Get personalized product recommendations based on your location! We\'ll show you products that are popular in your area and help you discover items that others nearby are viewing.',
+    }
+  }
+
+  const messages = getMessages(title)
+
   return (
     <div className="bg-gradient-to-br from-primary-50 to-primary-100 border border-primary-200 rounded-lg p-6 md:p-8 text-center">
       <div className="max-w-md mx-auto">
@@ -61,14 +102,14 @@ function LocationPermissionBanner({ onEnableLocation, title = 'Recently Viewed',
         <h3 className="text-xl font-semibold text-neutral-900 mb-2">
           {isRequesting
             ? 'Requesting Location Access...'
-            : 'Enable Location for Personalized Recommendations'}
+            : messages.heading}
         </h3>
 
         {/* Description */}
         <p className="text-neutral-600 mb-6">
           {isRequesting
             ? 'Please allow location access in your browser to continue.'
-            : "Get personalized product recommendations based on your location! We'll show you products that are popular in your area and help you discover items that others nearby are viewing."}
+            : messages.description}
         </p>
 
         {/* Enable Button */}

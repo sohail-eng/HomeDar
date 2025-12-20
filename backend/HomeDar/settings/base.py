@@ -160,12 +160,13 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 # CSRF trusted origins (for cross-origin POSTs with cookies)
-CSRF_TRUSTED_ORIGINS = [
+# Can be set via CSRF_TRUSTED_ORIGINS env variable (comma-separated list)
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-]
+])
 
 # Allow credentials (cookies, authorization headers, etc.)
 CORS_ALLOW_CREDENTIALS = True

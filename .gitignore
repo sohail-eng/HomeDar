@@ -96,3 +96,5 @@ logs/
 *.temp
 *.bak
 *.backup
+
+celerybeat-schedule

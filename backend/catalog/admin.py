@@ -13,6 +13,7 @@ from .models import (
     VisitorProfile,
     ProductView,
     ProductLike,
+    ProductReview,
 )
 
 
@@ -289,3 +290,41 @@ class ProductLikeAdmin(admin.ModelAdmin):
 
     visitor_short.short_description = 'Visitor'
 
+
+@admin.register(ProductReview)
+class ProductReviewAdmin(admin.ModelAdmin):
+    """Admin interface for ProductReview model."""
+
+    list_display = ['reviewer_name', 'visitor_short_id', 'product', 'review_text_preview', 'created_at']
+    list_filter = ['created_at', 'product']
+    search_fields = ['visitor__visitor_id', 'product__title', 'product__sku', 'name', 'review_text']
+    readonly_fields = ['id', 'visitor', 'product', 'created_at', 'updated_at']
+    date_hierarchy = 'created_at'
+    list_select_related = ['visitor', 'product']
+
+    fieldsets = (
+        ('Review', {
+            'fields': ('id', 'visitor', 'product', 'name', 'review_text', 'created_at', 'updated_at'),
+        }),
+    )
+
+    def reviewer_name(self, obj):
+        return obj.reviewer_name
+
+    reviewer_name.short_description = 'Reviewer'
+
+    def review_text_preview(self, obj):
+        """Display first 50 characters of review text."""
+        if obj.review_text:
+            preview = obj.review_text[:50]
+            if len(obj.review_text) > 50:
+                preview += "..."
+            return preview
+        return "No review text"
+
+    review_text_preview.short_description = 'Review Preview'
+
+    def visitor_short_id(self, obj):
+        return obj.visitor.visitor_id[:8]
+
+    visitor_short_id.short_description = 'Visitor'

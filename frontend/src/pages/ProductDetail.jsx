@@ -11,6 +11,7 @@ import { trackProductView } from '../services/trackingService'
 import { useBrowserLocation } from '../hooks/useBrowserLocation'
 import AlsoViewed from '../components/tracking/AlsoViewed'
 import LikeButton from '../components/tracking/LikeButton'
+import Reviews from '../components/tracking/Reviews'
 
 /**
  * Product Detail Page
@@ -265,6 +266,11 @@ function ProductDetail() {
           productId={currentProduct.id}
           onProductClick={(id) => navigate(`/product/${id}`)}
         />
+      )}
+
+      {/* Reviews Section */}
+      {currentProduct && currentProduct.id && (
+        <Reviews productId={currentProduct.id} />
       )}
       
       {/* Additional Information Section */}

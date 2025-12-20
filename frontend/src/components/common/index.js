@@ -14,4 +14,5 @@ export { default as FilterDropdown } from './FilterDropdown'
 export { default as SearchBar } from './SearchBar'
 export { default as Select } from './Select'
 export { default as Modal } from './Modal'
+export { default as ScrollToTop } from './ScrollToTop'
 

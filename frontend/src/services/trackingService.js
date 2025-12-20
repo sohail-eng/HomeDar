@@ -243,6 +243,82 @@ export const getFavoriteProducts = async (options = {}) => {
   }
 }
 
+/**
+ * Get reviews for a product.
+ * 
+ * @param {string} productId - Product UUID
+ * @returns {Promise<{success: boolean, data: Array, count: number}>}
+ */
+export const getProductReviews = async (productId) => {
+  try {
+    if (!productId) {
+      return {
+        success: false,
+        data: [],
+        count: 0,
+      }
+    }
+
+    const response = await api.get(`/products/${productId}/reviews/`)
+    return {
+      success: true,
+      data: response.data.results || [],
+      count: response.data.count || 0,
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Failed to fetch product reviews:', error)
+    }
+    return {
+      success: false,
+      data: [],
+      count: 0,
+    }
+  }
+}
+
+/**
+ * Create a review for a product.
+ * 
+ * @param {string} productId - Product UUID
+ * @param {Object} reviewData
+ * @param {string} [reviewData.name] - Optional reviewer name
+ * @param {string} reviewData.review_text - Required review text
+ * @returns {Promise<{success: boolean, data: Object, error: string}>}
+ */
+export const createProductReview = async (productId, reviewData) => {
+  try {
+    if (!productId || !reviewData || !reviewData.review_text) {
+      return {
+        success: false,
+        data: null,
+        error: 'Product ID and review text are required',
+      }
+    }
+
+    const visitorId = getOrCreateVisitorId()
+    const payload = {
+      ...reviewData,
+      visitor_id: visitorId,
+    }
+
+    const response = await api.post(`/products/${productId}/reviews/create/`, payload)
+    return {
+      success: true,
+      data: response.data,
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Failed to create product review:', error)
+    }
+    return {
+      success: false,
+      data: null,
+      error: error.response?.data?.error || 'Failed to create review',
+    }
+  }
+}
+
 export default {
   trackProductView,
   getRecentProducts,
@@ -251,6 +327,8 @@ export default {
   toggleProductLike,
   checkProductLike,
   getFavoriteProducts,
+  getProductReviews,
+  createProductReview,
 }
 
 

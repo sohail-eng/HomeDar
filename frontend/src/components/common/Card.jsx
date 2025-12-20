@@ -37,7 +37,7 @@ function Card({
           <img
             src={image}
             alt={imageAlt || title || 'Card image'}
-            className="w-full h-full object-contain sm:object-cover"
+            className="w-full h-full object-cover"
             onError={(e) => {
               e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23e5e5e5" width="400" height="300"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E'
             }}
