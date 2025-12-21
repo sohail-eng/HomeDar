@@ -233,14 +233,13 @@ class ProductViewTrackingAPIView(APIView):
     Create ProductView tracking events.
 
     POST /api/tracking/product-views/
-    - Uses visitor_id from cookie (creates if missing)
+    - Uses visitor_id from query parameter or request body (required)
     - Uses client IP to update VisitorProfile (including geolocation)
     - Merges optional browser lat/lng
     - Basic throttle: ignores duplicate views of the same product in the
       last N seconds (default 60s).
     """
 
-    cookie_name = "visitor_id"
     # Disable CSRF/session auth for this anonymous tracking endpoint.
     authentication_classes = []
 
@@ -252,15 +251,16 @@ class ProductViewTrackingAPIView(APIView):
         latitude = serializer.validated_data.get("latitude")
         longitude = serializer.validated_data.get("longitude")
 
-        # Prefer visitor_id provided by the frontend (body), then cookie, then generate.
-        payload_visitor_id = request.data.get("visitor_id")
-        visitor_id = payload_visitor_id or request.COOKIES.get(self.cookie_name)
+        # Get visitor_id from query param or payload (query param takes precedence)
+        visitor_id = (
+            request.query_params.get("visitor_id") or 
+            request.data.get("visitor_id")
+        )
         if not visitor_id:
-            # Use simple UUID4 string; let frontend also set same cookie, but
-            # backend is defensive and can generate it too.
-            import uuid
-
-            visitor_id = str(uuid.uuid4())
+            return Response(
+                {"error": "Visitor ID required. Please provide visitor_id in query parameter or request body."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Ensure / update VisitorProfile (including IP-based geolocation).
         visitor_profile = ensure_visitor_profile_for_request(request, visitor_id)
@@ -333,17 +333,6 @@ class ProductViewTrackingAPIView(APIView):
             ProductView.objects.create(**view_kwargs)
             response = Response({"success": True, "duplicate": False})
 
-        # Ensure the visitor_id cookie is set on the response (and aligned with payload).
-        # 1-year expiry
-        max_age = 60 * 60 * 24 * 365
-        response.set_cookie(
-            self.cookie_name,
-            visitor_id,
-            max_age=max_age,
-            httponly=False,  # must be accessible from frontend JS
-            samesite="Lax",
-        )
-
         return response
 
 
@@ -352,16 +341,15 @@ class RecentProductsAPIView(APIView):
     Return recently viewed products for the current anonymous visitor.
 
     GET /api/tracking/recent-products/
-    - Uses visitor_id from cookie
+    - Uses visitor_id from query parameter (required)
     - Returns last N unique products ordered by most recent view
     - Response shape matches ProductListSerializer
     """
 
-    cookie_name = "visitor_id"
     default_limit = 10
 
     def get(self, request, *args, **kwargs):
-        visitor_id = request.COOKIES.get(self.cookie_name)
+        visitor_id = request.query_params.get("visitor_id")
         if not visitor_id:
             return Response({"results": []})
 
@@ -416,7 +404,6 @@ class PopularProductsAPIView(APIView):
     - limit: number of products to return (default: 10, max: 50)
     """
 
-    cookie_name = "visitor_id"
     default_limit = 10
 
     def get(self, request, *args, **kwargs):
@@ -446,7 +433,7 @@ class PopularProductsAPIView(APIView):
         # Resolve current visitor's location (country/city) for ordering priority.
         visitor_country = None
         visitor_city = None
-        visitor_id = request.COOKIES.get(self.cookie_name)
+        visitor_id = request.query_params.get("visitor_id")
         if visitor_id:
             try:
                 visitor = VisitorProfile.objects.get(visitor_id=visitor_id)
@@ -528,7 +515,6 @@ class AlsoViewedProductsAPIView(APIView):
 
     default_limit = 10
     default_period_days = 90
-    cookie_name = "visitor_id"
 
     def get(self, request, product_id, *args, **kwargs):
         from .models import Product, VisitorProfile
@@ -561,7 +547,7 @@ class AlsoViewedProductsAPIView(APIView):
 
         # Get current visitor's viewed products to exclude them
         current_visitor_viewed_products = None
-        visitor_id = request.COOKIES.get(self.cookie_name)
+        visitor_id = request.query_params.get("visitor_id")
         if visitor_id:
             try:
                 visitor = VisitorProfile.objects.get(visitor_id=visitor_id)
@@ -648,13 +634,12 @@ class ProductLikeToggleAPIView(APIView):
     
     Returns: { "liked": true/false, "product_id": "uuid" }
     
-    - Uses visitor_id from cookie
+    - Uses visitor_id from query parameter or request body (required)
     - Creates like if it doesn't exist (like)
     - Deletes like if it exists (unlike)
     """
     
     authentication_classes = []
-    cookie_name = "visitor_id"
     
     @method_decorator(csrf_exempt, name="dispatch")
     def dispatch(self, *args, **kwargs):
@@ -671,13 +656,15 @@ class ProductLikeToggleAPIView(APIView):
         
         product = serializer.context.get("product")
         
-        # Get visitor_id from cookie or payload
-        payload_visitor_id = request.data.get("visitor_id")
-        visitor_id = payload_visitor_id or request.COOKIES.get(self.cookie_name)
+        # Get visitor_id from query param or payload (query param takes precedence)
+        visitor_id = (
+            request.query_params.get("visitor_id") or 
+            request.data.get("visitor_id")
+        )
         
         if not visitor_id:
             return Response(
-                {"error": "Visitor ID required. Please enable cookies."},
+                {"error": "Visitor ID required. Please provide visitor_id in query parameter or request body."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         
@@ -713,22 +700,11 @@ class ProductLikeToggleAPIView(APIView):
         # Get updated like count
         like_count = ProductLike.objects.filter(product=product).count()
         
-        # Set cookie for future requests
-        response = Response({
+        return Response({
             "liked": liked,
             "product_id": str(product.id),
             "like_count": like_count,
         })
-        max_age = 60 * 60 * 24 * 365
-        response.set_cookie(
-            self.cookie_name,
-            visitor_id,
-            max_age=max_age,
-            httponly=False,
-            samesite="Lax"
-        )
-        
-        return response
     
     def get(self, request, product_id, *args, **kwargs):
         """
@@ -748,11 +724,13 @@ class ProductLikeToggleAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         
-        visitor_id = request.COOKIES.get(self.cookie_name)
+        # Prefer visitor_id from query parameter, then cookie
+        visitor_id = request.query_params.get("visitor_id")
         if not visitor_id:
             return Response({
                 "liked": False,
                 "product_id": str(product.id),
+                "like_count": ProductLike.objects.filter(product=product).count(),
             })
         
         try:
@@ -785,12 +763,11 @@ class FavoriteProductsAPIView(APIView):
     
     Returns: { "results": [products], "count": number }
     
-    - Uses visitor_id from cookie
+    - Uses visitor_id from query parameter (required)
     - Returns empty list if visitor not found or no likes
     """
     
     authentication_classes = []
-    cookie_name = "visitor_id"
     default_limit = 50
     
     def get(self, request, *args, **kwargs):
@@ -804,7 +781,7 @@ class FavoriteProductsAPIView(APIView):
         except (TypeError, ValueError):
             pass
         
-        visitor_id = request.COOKIES.get(self.cookie_name)
+        visitor_id = request.query_params.get("visitor_id")
         if not visitor_id:
             return Response({
                 "results": [],
@@ -902,12 +879,11 @@ class ProductReviewCreateAPIView(APIView):
     
     Returns: { "id": "uuid", "reviewer_name": "string", "review_text": "string", "created_at": "datetime" }
     
-    - Uses visitor_id from cookie
+    - Uses visitor_id from query parameter or request body (required)
     - Requires location to be granted (same as other tracking features)
     """
     
     authentication_classes = []
-    cookie_name = "visitor_id"
     
     @method_decorator(csrf_exempt, name="dispatch")
     def dispatch(self, *args, **kwargs):
@@ -927,13 +903,15 @@ class ProductReviewCreateAPIView(APIView):
         serializer = ProductReviewCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Get visitor_id from cookie or payload
-        payload_visitor_id = request.data.get("visitor_id")
-        visitor_id = payload_visitor_id or request.COOKIES.get(self.cookie_name)
+        # Get visitor_id from query param or payload (query param takes precedence)
+        visitor_id = (
+            request.query_params.get("visitor_id") or 
+            request.data.get("visitor_id")
+        )
         
         if not visitor_id:
             return Response(
-                {"error": "Visitor ID required. Please enable cookies and location."},
+                {"error": "Visitor ID required. Please provide visitor_id in query parameter or request body."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         
@@ -956,15 +934,4 @@ class ProductReviewCreateAPIView(APIView):
         # Serialize and return
         response_serializer = ProductReviewSerializer(review, context={"request": request})
         
-        # Set cookie for future requests
-        response = Response(response_serializer.data, status=status.HTTP_201_CREATED)
-        max_age = 60 * 60 * 24 * 365
-        response.set_cookie(
-            self.cookie_name,
-            visitor_id,
-            max_age=max_age,
-            httponly=False,
-            samesite="Lax"
-        )
-        
-        return response
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)

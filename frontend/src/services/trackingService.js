@@ -18,7 +18,7 @@ export const trackProductView = async (productId, options = {}) => {
   try {
     if (!productId) return
 
-    // Ensure visitor_id cookie exists (also stored in localStorage).
+    // Get or create visitor_id from localStorage
     const visitorId = getOrCreateVisitorId()
 
     const payload = {
@@ -48,10 +48,13 @@ export const trackProductView = async (productId, options = {}) => {
  */
 export const getRecentProducts = async (limit = 10) => {
   try {
-    // Ensure visitor_id cookie exists so backend can resolve visitor.
-    getOrCreateVisitorId()
+    // Ensure visitor_id exists and pass it explicitly as query parameter
+    const visitorId = getOrCreateVisitorId()
     const response = await api.get('/tracking/recent-products/', {
-      params: { limit },
+      params: { 
+        limit,
+        visitor_id: visitorId,
+      },
     })
     return {
       success: true,
@@ -73,7 +76,10 @@ export const getRecentProducts = async (limit = 10) => {
  */
 export const getPopularProducts = async (options = {}) => {
   try {
-    const params = {}
+    const visitorId = getOrCreateVisitorId()
+    const params = {
+      visitor_id: visitorId,
+    }
     if (options.country) params.country = options.country
     if (options.period) params.period = options.period
     if (options.limit) params.limit = options.limit
@@ -115,7 +121,10 @@ export const getAlsoViewedProducts = async (productId, options = {}) => {
       }
     }
 
-    const params = {}
+    const visitorId = getOrCreateVisitorId()
+    const params = {
+      visitor_id: visitorId,
+    }
     if (options.limit) params.limit = options.limit
     if (options.period) params.period = options.period
 
@@ -192,8 +201,12 @@ export const checkProductLike = async (productId) => {
       }
     }
 
-    getOrCreateVisitorId() // Ensure visitor_id cookie exists
-    const response = await api.get(`/tracking/product-like/${productId}/`)
+    const visitorId = getOrCreateVisitorId()
+    const response = await api.get(`/tracking/product-like/${productId}/`, {
+      params: {
+        visitor_id: visitorId,
+      },
+    })
     return {
       success: true,
       liked: response.data.liked || false,
@@ -221,8 +234,10 @@ export const checkProductLike = async (productId) => {
  */
 export const getFavoriteProducts = async (options = {}) => {
   try {
-    getOrCreateVisitorId() // Ensure visitor_id cookie exists
-    const params = {}
+    const visitorId = getOrCreateVisitorId()
+    const params = {
+      visitor_id: visitorId,
+    }
     if (options.limit) params.limit = options.limit
 
     const response = await api.get('/tracking/favorite-products/', { params })
