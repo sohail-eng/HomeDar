@@ -105,13 +105,6 @@ def lookup_location(ip: str) -> Tuple[Optional[str], Optional[str], Optional[flo
 
         # Respect rate-limit style responses by waiting and retrying.
         if response.status_code in (429, 500, 502, 503, 504):
-            logger.info(
-                "Geolocation API rate-limited or temporary error (status %s) for IP %s; "
-                "sleeping %s second(s) before retry.",
-                response.status_code,
-                ip,
-                sleep_per_retry_seconds,
-            )
             time.sleep(sleep_per_retry_seconds)
             continue
 
@@ -267,14 +260,6 @@ def lookup_location_from_coords(
             return None, None
 
         if response.status_code in (429, 500, 502, 503, 504):
-            logger.info(
-                "Reverse geocoding rate-limited/temporary error (status %s) "
-                "for coords (%s, %s); sleeping %s second(s) before retry.",
-                response.status_code,
-                latitude,
-                longitude,
-                sleep_per_retry_seconds,
-            )
             time.sleep(sleep_per_retry_seconds)
             continue
 

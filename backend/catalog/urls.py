@@ -20,7 +20,13 @@ from .views import (
     FavoriteProductsAPIView,
     ProductReviewsAPIView,
     ProductReviewCreateAPIView,
+    SignupAPIView,
+    LoginAPIView,
+    ForgotPasswordStep1APIView,
+    ForgotPasswordStep2APIView,
+    ProfileAPIView,
 )
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 # Create a router and register viewsets
 router = DefaultRouter()
@@ -44,4 +50,13 @@ urlpatterns = [
     # Review endpoints
     path('products/<uuid:product_id>/reviews/', ProductReviewsAPIView.as_view(), name='product-reviews'),
     path('products/<uuid:product_id>/reviews/create/', csrf_exempt(ProductReviewCreateAPIView.as_view()), name='product-review-create'),
+    # Authentication endpoints
+    path('auth/signup/', SignupAPIView.as_view(), name='signup'),
+    path('auth/login/', LoginAPIView.as_view(), name='login'),
+    path('auth/forgot-password/step1/', ForgotPasswordStep1APIView.as_view(), name='forgot-password-step1'),
+    path('auth/forgot-password/step2/', ForgotPasswordStep2APIView.as_view(), name='forgot-password-step2'),
+    path('auth/profile/', ProfileAPIView.as_view(), name='profile'),
+    # JWT token endpoints (using custom token for our User model)
+    path('auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]

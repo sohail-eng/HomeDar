@@ -2,6 +2,7 @@
 API Views and ViewSets for HomeDar catalog application.
 """
 
+import logging
 from datetime import timedelta
 
 from django.utils import timezone
@@ -9,12 +10,15 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Count, Max
-from rest_framework import status, viewsets
+from rest_framework import status, viewsets, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
 
-from .models import Category, SubCategory, Product, ProductImage, ContactUs, ProductView, ProductLike, ProductReview
+logger = logging.getLogger(__name__)
+
+from .models import Category, SubCategory, Product, ProductImage, ContactUs, ProductView, ProductLike, ProductReview, User, SecurityQuestion, VisitorProfile
 from .serializers import (
     CategorySerializer,
     SubCategorySerializer,
@@ -27,8 +31,17 @@ from .serializers import (
     ProductLikeToggleSerializer,
     ProductReviewSerializer,
     ProductReviewCreateSerializer,
+    UserSignupSerializer,
+    UserLoginSerializer,
+    UserProfileSerializer,
+    ForgotPasswordStep1Serializer,
+    ForgotPasswordStep2Serializer,
 )
+from .utils.jwt import get_tokens_for_user
+from .utils.auth import CustomJWTAuthentication
+from rest_framework.permissions import IsAuthenticated
 from .utils.geo import get_client_ip, ensure_visitor_profile_for_request
+from .throttles import LoginRateThrottle, SignupRateThrottle, ForgotPasswordRateThrottle
 
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
@@ -881,9 +894,11 @@ class ProductReviewCreateAPIView(APIView):
     
     - Uses visitor_id from query parameter or request body (required)
     - Requires location to be granted (same as other tracking features)
+    - If user is authenticated, uses their full name automatically
     """
     
-    authentication_classes = []
+    authentication_classes = [CustomJWTAuthentication]  # Allow authentication but don't require it
+    permission_classes = []  # No permission required - anyone can review
     
     @method_decorator(csrf_exempt, name="dispatch")
     def dispatch(self, *args, **kwargs):
@@ -923,11 +938,22 @@ class ProductReviewCreateAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         
+        # Determine reviewer name:
+        # 1. If user is authenticated, use their full name
+        # 2. Otherwise, use the name from the request (or None, which will show as "Anonymous")
+        reviewer_name = None
+        if request.user and request.user.is_authenticated:
+            # User is authenticated, use their full name
+            reviewer_name = request.user.get_full_name() or request.user.username
+        else:
+            # User not authenticated, use the name from the request
+            reviewer_name = serializer.validated_data.get("name")
+        
         # Create the review
         review = ProductReview.objects.create(
             visitor=visitor_profile,
             product=product,
-            name=serializer.validated_data.get("name"),
+            name=reviewer_name,
             review_text=serializer.validated_data.get("review_text"),
         )
         
@@ -935,3 +961,386 @@ class ProductReviewCreateAPIView(APIView):
         response_serializer = ProductReviewSerializer(review, context={"request": request})
         
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+# ============================================================================
+# Authentication Views
+# ============================================================================
+
+class SignupAPIView(APIView):
+    """
+    User signup endpoint.
+    
+    POST /api/auth/signup/
+    
+    Accepts:
+    - first_name, last_name, username, email, password
+    - visitor_id (optional)
+    - security_questions (array of 3)
+    
+    Returns:
+    - user data
+    - access token
+    - refresh token
+    """
+    
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [SignupRateThrottle]
+    
+    @method_decorator(csrf_exempt, name="dispatch")
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            serializer = UserSignupSerializer(data=request.data, context={'request': request})
+            if not serializer.is_valid():
+                return Response(
+                    serializer.errors,
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Create user
+            user = User.objects.create(
+                first_name=serializer.validated_data['first_name'],
+                last_name=serializer.validated_data['last_name'],
+                username=serializer.validated_data['username'],
+                email=serializer.validated_data['email'],
+            )
+            # Password is hashed via set_password (Task 3.1)
+            user.set_password(serializer.validated_data['password'])
+            user.save()
+            
+            # Link visitor_id if provided (Task 3.3)
+            visitor = serializer.context.get('visitor')
+            new_visitor_id = None
+            
+            if visitor:
+                # Check if visitor is already linked to another user
+                existing_user = User.objects.filter(visitor=visitor).first()
+                if existing_user and existing_user.id != user.id:
+                    # Create a new visitor_id for the new user
+                    import uuid
+                    from .utils.geo import ensure_visitor_profile_for_request
+                    
+                    new_visitor_id = str(uuid.uuid4())
+                    
+                    # Create new visitor profile
+                    new_visitor = ensure_visitor_profile_for_request(request, new_visitor_id)
+                    if new_visitor:
+                        user.visitor = new_visitor
+                        user.save()
+                    else:
+                        logger.error(f"Failed to create new visitor profile for {new_visitor_id}")
+                else:
+                    # Visitor not linked to another user, use it
+                    user.visitor = visitor
+                    user.save()
+                    new_visitor_id = visitor.visitor_id
+            else:
+                # No visitor_id provided, create a new one
+                import uuid
+                from .utils.geo import ensure_visitor_profile_for_request
+                
+                new_visitor_id = str(uuid.uuid4())
+                new_visitor = ensure_visitor_profile_for_request(request, new_visitor_id)
+                if new_visitor:
+                    user.visitor = new_visitor
+                    user.save()
+            
+            # Store new_visitor_id for response
+            if not new_visitor_id and user.visitor:
+                new_visitor_id = user.visitor.visitor_id
+            
+            # Create security questions (Task 3.2: answers are hashed via set_answer)
+            for sq_data in serializer.validated_data['security_questions']:
+                security_question = SecurityQuestion.objects.create(
+                    user=user,
+                    question_text=sq_data['question_text'],
+                    question_order=sq_data['question_order'],
+                )
+                # Answer is hashed and normalized via set_answer
+                security_question.set_answer(sq_data['answer'])
+                security_question.save()
+            
+            # Generate JWT tokens
+            tokens = get_tokens_for_user(user)
+            
+            # Serialize user data
+            user_serializer = UserProfileSerializer(user, context={'request': request})
+            
+            return Response({
+                'user': user_serializer.data,
+                'access': tokens['access'],
+                'refresh': tokens['refresh'],
+                'visitor_id': new_visitor_id,  # Return the visitor_id to save in localStorage
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            # Log detailed error server-side
+            logger.error(f"Signup error: {str(e)}", exc_info=True)
+            # Return generic error message to frontend
+            return Response(
+                {'error': 'An error occurred during signup. Please try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class LoginAPIView(APIView):
+    """
+    User login endpoint.
+    
+    POST /api/auth/login/
+    
+    Accepts:
+    - username_or_email
+    - password
+    
+    Returns:
+    - user data
+    - access token
+    - refresh token
+    """
+    
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [LoginRateThrottle]
+    
+    @method_decorator(csrf_exempt, name="dispatch")
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            serializer = UserLoginSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            user = serializer.validated_data['user']
+            
+            # Generate JWT tokens
+            tokens = get_tokens_for_user(user)
+            
+            # Serialize user data
+            user_serializer = UserProfileSerializer(user, context={'request': request})
+            
+            # Include visitor_id in response if user has one
+            visitor_id = None
+            if user.visitor:
+                visitor_id = user.visitor.visitor_id
+            
+            return Response({
+                'user': user_serializer.data,
+                'access': tokens['access'],
+                'refresh': tokens['refresh'],
+                'visitor_id': visitor_id,  # Return the visitor_id to save in localStorage
+            }, status=status.HTTP_200_OK)
+            
+        except serializers.ValidationError as e:
+            # Log failed login attempt
+            username_or_email = request.data.get('username_or_email', 'unknown')
+            logger.warning(f"Login failed for: {username_or_email}")
+            # Re-raise to return proper error response
+            raise
+        except Exception as e:
+            # Log detailed error server-side
+            logger.error(f"Login error: {str(e)}", exc_info=True)
+            # Return generic error message to frontend
+            return Response(
+                {'error': 'An error occurred during login. Please try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ForgotPasswordStep1APIView(APIView):
+    """
+    Forgot password step 1: Get security questions.
+    
+    POST /api/auth/forgot-password/step1/
+    
+    Accepts:
+    - username_or_email (can be either username or email)
+    
+    Returns:
+    - questions (array of 3 security questions)
+    """
+    
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [ForgotPasswordRateThrottle]
+    
+    @method_decorator(csrf_exempt, name="dispatch")
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            serializer = ForgotPasswordStep1Serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            user = serializer.context['user']
+            
+            # Get all security questions for this user
+            security_questions = SecurityQuestion.objects.filter(user=user).order_by('question_order')
+            
+            questions_data = [
+                {
+                    'question_order': sq.question_order,
+                    'question_text': sq.question_text,
+                }
+                for sq in security_questions
+            ]
+            
+            return Response({
+                'questions': questions_data,
+            }, status=status.HTTP_200_OK)
+            
+        except serializers.ValidationError as e:
+            # Log failed password reset attempt
+            email = request.data.get('email', 'unknown')
+            logger.warning(f"Password reset step 1 failed for email: {email}")
+            raise
+        except Exception as e:
+            # Log detailed error server-side
+            logger.error(f"Password reset step 1 error: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'An error occurred. Please try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ForgotPasswordStep2APIView(APIView):
+    """
+    Forgot password step 2: Verify answer and reset password.
+    
+    POST /api/auth/forgot-password/step2/
+    
+    Accepts:
+    - username_or_email (required) - can be either username or email
+    - question_order (required, integer: 1, 2, or 3)
+    - answer (required, string)
+    - password (required, string) - new password to set
+    
+    Returns:
+    - success message if password is reset successfully
+    """
+    
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [ForgotPasswordRateThrottle]
+    
+    @method_decorator(csrf_exempt, name="dispatch")
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            serializer = ForgotPasswordStep2Serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            user = serializer.validated_data['user']
+            security_question = serializer.validated_data['security_question']
+            answer = serializer.validated_data['answer']
+            new_password = serializer.validated_data['password']
+            
+            # Verify answer (Task 3.2: uses check_password for hashed answer verification)
+            if not security_question.check_answer(answer):
+                # Log failed answer verification
+                logger.warning(
+                    f"Password reset step 2 failed: incorrect answer for user {user.email}, "
+                    f"question_order {security_question.question_order}"
+                )
+                return Response(
+                    {'error': 'Incorrect answer. Please try again.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Answer is correct, reset the password
+            user.set_password(new_password)
+            user.save()
+            
+            return Response(
+                {
+                    'message': 'Password has been reset successfully. You can now login with your new password.',
+                    'success': True,
+                },
+                status=status.HTTP_200_OK,
+            )
+            
+        except serializers.ValidationError as e:
+            # Log failed password reset attempt
+            username_or_email = request.data.get('username_or_email', 'unknown')
+            logger.warning(f"Password reset step 2 validation failed for: {username_or_email}")
+            raise
+        except Exception as e:
+            # Log detailed error server-side
+            logger.error(f"Password reset step 2 error: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'An error occurred. Please try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ProfileAPIView(APIView):
+    """
+    User profile endpoint.
+    
+    GET /api/auth/profile/ - Get current user profile
+    PUT /api/auth/profile/ - Update current user profile
+    PATCH /api/auth/profile/ - Partially update current user profile
+    """
+    
+    authentication_classes = [CustomJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, *args, **kwargs):
+        """Get current user profile."""
+        user = request.user
+        
+        if not isinstance(user, User):
+            return Response(
+                {'error': 'User not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        serializer = UserProfileSerializer(user, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def put(self, request, *args, **kwargs):
+        """Update user profile (full update)."""
+        return self._update_profile(request, partial=False)
+    
+    def patch(self, request, *args, **kwargs):
+        """Partially update user profile."""
+        return self._update_profile(request, partial=True)
+    
+    def _update_profile(self, request, partial=False):
+        """Helper method to update profile."""
+        user = request.user
+        
+        if not isinstance(user, User):
+            return Response(
+                {'error': 'User not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        # Update allowed fields only
+        allowed_fields = ['first_name', 'last_name', 'email']
+        update_data = {k: v for k, v in request.data.items() if k in allowed_fields}
+        
+        # Validate email uniqueness if email is being changed
+        if 'email' in update_data and update_data['email'] != user.email:
+            if User.objects.filter(email=update_data['email']).exclude(id=user.id).exists():
+                return Response(
+                    {'email': ['A user with this email already exists.']},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        
+        # Update user
+        for field, value in update_data.items():
+            setattr(user, field, value)
+        user.save()
+        
+        serializer = UserProfileSerializer(user, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+

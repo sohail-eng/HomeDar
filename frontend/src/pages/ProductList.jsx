@@ -4,6 +4,7 @@ import { useProduct } from '../contexts/ProductContext'
 import { useCategory } from '../contexts/CategoryContext'
 import { useFilter } from '../contexts/FilterContext'
 import { useSearch } from '../contexts/SearchContext'
+import { useAuth } from '../contexts/AuthContext'
 import {
   Card,
   Button,
@@ -25,6 +26,7 @@ function ProductList() {
   const navigate = useNavigate()
   
   // Contexts
+  const { isAuthenticated } = useAuth()
   const {
     products,
     loading,
@@ -708,9 +710,26 @@ function ProductList() {
                 className="h-full"
               >
                 <div className="mt-2">
-                  <p className="text-xl font-bold text-primary-600">
-                    ${parseFloat(product.price).toFixed(2)}
-                  </p>
+                  {/* Price Display */}
+                  {isAuthenticated && product.discount_price ? (
+                    <div>
+                      <div className="flex items-baseline gap-2">
+                        <p className="text-xl font-bold text-primary-600">
+                          ${parseFloat(product.discount_price).toFixed(2)}
+                        </p>
+                        <p className="text-sm text-neutral-500 line-through">
+                          ${parseFloat(product.price).toFixed(2)}
+                        </p>
+                      </div>
+                      <p className="text-xs text-success-600 font-medium mt-1">
+                        Wholesale Price
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xl font-bold text-primary-600">
+                      ${parseFloat(product.price).toFixed(2)}
+                    </p>
+                  )}
                   {product.description && (
                     <p className="text-sm text-neutral-600 mt-1 line-clamp-2">
                       {product.description}

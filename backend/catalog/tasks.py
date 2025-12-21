@@ -40,12 +40,6 @@ def cleanup_old_product_views():
         if deleted_count > 0:
             # Delete old records
             old_views.delete()
-            logger.info(
-                f"Cleanup task completed: Deleted {deleted_count} ProductView records "
-                f"older than 30 days (cutoff: {cutoff_date.isoformat()})"
-            )
-        else:
-            logger.info("Cleanup task completed: No ProductView records older than 30 days to delete")
         
         return {
             'status': 'success',
@@ -85,8 +79,6 @@ def backfill_location_from_coords():
     lock_acquired = cache.add(lock_key, 'running', lock_timeout)
     
     if not lock_acquired:
-        logger.info("Backfill location task is already running, skipping this execution")
-        # Lock not acquired, so we don't need to delete it
         return {
             'status': 'skipped',
             'message': 'Task already running',
@@ -102,8 +94,6 @@ def backfill_location_from_coords():
         )
         
         if not views_with_coords.exists():
-            logger.info("No ProductView records found with missing location data")
-            # Release lock before returning
             cache.delete(lock_key)
             return {
                 'status': 'success',
@@ -115,11 +105,6 @@ def backfill_location_from_coords():
         # Get distinct lat/long pairs
         distinct_coords = views_with_coords.values('latitude', 'longitude').distinct()
         coord_list = [(item['latitude'], item['longitude']) for item in distinct_coords]
-        
-        logger.info(
-            f"Found {views_with_coords.count()} ProductView records with missing location data. "
-            f"Processing {len(coord_list)} unique coordinate pairs"
-        )
         
         updated_views_count = 0
         updated_visitors_count = 0
@@ -133,10 +118,6 @@ def backfill_location_from_coords():
                 if not country and not city:
                     logger.warning(f"Failed to get location for coordinates ({lat}, {lon})")
                     continue  # Skip if we didn't get any location data
-                
-                logger.debug(
-                    f"Reverse geocoded ({lat}, {lon}): country={country}, city={city}"
-                )
                 
                 # Prepare update data
                 update_data = {}
@@ -157,9 +138,6 @@ def backfill_location_from_coords():
                 if views_to_update.exists():
                     count = views_to_update.update(**update_data)
                     updated_views_count += count
-                    logger.debug(
-                        f"Updated {count} ProductView records for coordinates ({lat}, {lon})"
-                    )
                 
                 # Update all VisitorProfile records with this lat/long pair
                 # Only update if they have the same lat/long and are missing country or city
@@ -180,9 +158,6 @@ def backfill_location_from_coords():
                     if visitor_update_data:
                         visitor_count = visitors_to_update.update(**visitor_update_data)
                         updated_visitors_count += visitor_count
-                        logger.debug(
-                            f"Updated {visitor_count} VisitorProfile records for coordinates ({lat}, {lon})"
-                        )
                     
             except Exception as e:
                 logger.error(
@@ -190,13 +165,6 @@ def backfill_location_from_coords():
                     exc_info=True
                 )
                 continue  # Continue with next coordinate pair
-        
-        logger.info(
-            f"Backfill location task completed: "
-            f"Processed {len(coord_list)} coordinate pairs, "
-            f"Updated {updated_views_count} ProductView records, "
-            f"Updated {updated_visitors_count} VisitorProfile records"
-        )
         
         # Release lock before returning
         cache.delete(lock_key)

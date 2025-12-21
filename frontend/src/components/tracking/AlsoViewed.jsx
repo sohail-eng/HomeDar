@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import PropTypes from 'prop-types'
 import { getAlsoViewedProducts } from '../../services/trackingService'
 import { Card, Button } from '../common'
+import { useAuth } from '../../contexts/AuthContext'
 
 function AlsoViewed({ productId, onProductClick }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [showAll, setShowAll] = useState(false)
+  const { isAuthenticated } = useAuth()
 
   useEffect(() => {
     if (!productId) {
@@ -57,6 +59,24 @@ function AlsoViewed({ productId, onProductClick }) {
     return `$${parseFloat(price).toFixed(2)}`
   }
 
+  const getPriceDisplay = (product) => {
+    if (isAuthenticated && product.discount_price) {
+      return (
+        <div>
+          <div className="flex items-baseline gap-1">
+            <span className="font-semibold text-primary-600">
+              {formatPrice(product.discount_price)}
+            </span>
+            <span className="text-xs text-neutral-500 line-through">
+              {formatPrice(product.price)}
+            </span>
+          </div>
+        </div>
+      )
+    }
+    return formatPrice(product.price)
+  }
+
   // On small screens, show only 1 product initially, then all when "Show More" is clicked
   // On larger screens (sm and above), always show all products
   const hasMoreItems = items.length > 1
@@ -79,7 +99,7 @@ function AlsoViewed({ productId, onProductClick }) {
           >
             <Card
               title={product.title}
-              subtitle={formatPrice(product.price)}
+              subtitle={getPriceDisplay(product)}
               image={getMainImageUrl(product)}
               imageAlt={product.title}
               hover

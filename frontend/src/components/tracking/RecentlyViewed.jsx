@@ -3,11 +3,13 @@ import PropTypes from 'prop-types'
 import { getRecentProducts } from '../../services/trackingService'
 import { Card } from '../common'
 import { useBrowserLocation } from '../../hooks/useBrowserLocation'
+import { useAuth } from '../../contexts/AuthContext'
 import LocationPermissionBanner from './LocationPermissionBanner'
 
 function RecentlyViewed({ onProductClick }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
+  const { isAuthenticated } = useAuth()
   const { status: locationStatus, requestLocation } = useBrowserLocation()
 
   useEffect(() => {
@@ -78,6 +80,24 @@ function RecentlyViewed({ onProductClick }) {
     return `$${parseFloat(price).toFixed(2)}`
   }
 
+  const getPriceDisplay = (product) => {
+    if (isAuthenticated && product.discount_price) {
+      return (
+        <div>
+          <div className="flex items-baseline gap-1">
+            <span className="font-semibold text-primary-600">
+              {formatPrice(product.discount_price)}
+            </span>
+            <span className="text-xs text-neutral-500 line-through">
+              {formatPrice(product.price)}
+            </span>
+          </div>
+        </div>
+      )
+    }
+    return formatPrice(product.price)
+  }
+
   return (
     <section className="mt-8">
       <div className="flex items-center justify-between mb-3">
@@ -90,7 +110,7 @@ function RecentlyViewed({ onProductClick }) {
           <Card
             key={product.id}
             title={product.title}
-            subtitle={formatPrice(product.price)}
+            subtitle={getPriceDisplay(product)}
             image={getMainImageUrl(product)}
             imageAlt={product.title}
             hover

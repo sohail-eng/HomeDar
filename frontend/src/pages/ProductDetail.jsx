@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useProduct } from '../contexts/ProductContext'
+import { useAuth } from '../contexts/AuthContext'
 import {
   LoadingSpinner,
   ErrorMessage,
@@ -20,6 +21,7 @@ import Reviews from '../components/tracking/Reviews'
 function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
   const { currentProduct, loading, error, fetchProductById } = useProduct()
   const { status: locationStatus, location } = useBrowserLocation()
   
@@ -191,11 +193,27 @@ function ProductDetail() {
           
           {/* Price */}
           <div className="border-t border-b border-neutral-200 py-4">
-            <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-bold text-primary-600">
-                {formatPrice(currentProduct.price)}
-              </span>
-            </div>
+            {isAuthenticated && currentProduct.discount_price ? (
+              <div className="space-y-2">
+                <div className="flex items-baseline gap-3">
+                  <span className="text-4xl font-bold text-primary-600">
+                    {formatPrice(currentProduct.discount_price)}
+                  </span>
+                  <span className="text-xl text-neutral-500 line-through">
+                    {formatPrice(currentProduct.price)}
+                  </span>
+                </div>
+                <p className="text-sm text-success-600 font-medium">
+                  Wholesale Price
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-bold text-primary-600">
+                  {formatPrice(currentProduct.price)}
+                </span>
+              </div>
+            )}
           </div>
           
           {/* Description */}
@@ -236,7 +254,18 @@ function ProductDetail() {
               <div>
                 <dt className="text-sm font-medium text-neutral-500">Price</dt>
                 <dd className="mt-1 text-sm text-neutral-900 font-semibold">
-                  {formatPrice(currentProduct.price)}
+                  {isAuthenticated && currentProduct.discount_price ? (
+                    <div>
+                      <span className="text-primary-600">
+                        {formatPrice(currentProduct.discount_price)}
+                      </span>
+                      <span className="text-neutral-500 line-through ml-2">
+                        {formatPrice(currentProduct.price)}
+                      </span>
+                    </div>
+                  ) : (
+                    formatPrice(currentProduct.price)
+                  )}
                 </dd>
               </div>
               {currentProduct.created_at && (

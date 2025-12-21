@@ -14,6 +14,8 @@ from .models import (
     ProductView,
     ProductLike,
     ProductReview,
+    User,
+    SecurityQuestion,
 )
 
 
@@ -101,7 +103,11 @@ class ProductAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Basic Information', {
-            'fields': ('id', 'title', 'sku', 'price', 'description')
+            'fields': ('id', 'title', 'sku', 'description')
+        }),
+        ('Pricing', {
+            'fields': ('price', 'discount_price'),
+            'description': 'Regular price is shown to all users. Discount price (wholesale) is only visible to logged-in users.'
         }),
         ('Relationships', {
             'fields': ('subcategories',)
@@ -328,3 +334,79 @@ class ProductReviewAdmin(admin.ModelAdmin):
         return obj.visitor.visitor_id[:8]
 
     visitor_short_id.short_description = 'Visitor'
+
+
+class SecurityQuestionInline(admin.TabularInline):
+    """Inline admin for SecurityQuestion in User admin."""
+    model = SecurityQuestion
+    extra = 0
+    max_num = 3
+    min_num = 3
+    fields = ['question_order', 'question_text', 'created_at']
+    readonly_fields = ['created_at']
+    can_delete = False
+
+
+@admin.register(User)
+class UserAdmin(admin.ModelAdmin):
+    """Admin interface for User model."""
+    list_display = ['username', 'email', 'first_name', 'last_name', 'visitor', 'created_at']
+    list_filter = ['created_at', 'updated_at']
+    search_fields = ['username', 'email', 'first_name', 'last_name']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    date_hierarchy = 'created_at'
+    list_select_related = ['visitor']
+    inlines = [SecurityQuestionInline]
+    
+    fieldsets = (
+        ('User Information', {
+            'fields': ('id', 'username', 'email', 'first_name', 'last_name', 'visitor')
+        }),
+        ('Security', {
+            'fields': ('password',),
+            'description': 'Password is stored as a hash. Use "Change password" form to update.',
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+    
+    def get_readonly_fields(self, request, obj=None):
+        """Make password readonly in change form (use change password form instead)."""
+        readonly = list(self.readonly_fields)
+        if obj:  # Editing an existing object
+            readonly.append('password')
+        return readonly
+
+
+@admin.register(SecurityQuestion)
+class SecurityQuestionAdmin(admin.ModelAdmin):
+    """Admin interface for SecurityQuestion model."""
+    list_display = ['user', 'question_order', 'question_text_preview', 'created_at']
+    list_filter = ['question_order', 'created_at']
+    search_fields = ['user__username', 'user__email', 'question_text']
+    readonly_fields = ['id', 'user', 'answer_hash', 'created_at', 'updated_at']
+    date_hierarchy = 'created_at'
+    list_select_related = ['user']
+    
+    fieldsets = (
+        ('Security Question', {
+            'fields': ('id', 'user', 'question_order', 'question_text', 'answer_hash')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+    
+    def question_text_preview(self, obj):
+        """Display first 50 characters of question text."""
+        if obj.question_text:
+            preview = obj.question_text[:50]
+            if len(obj.question_text) > 50:
+                preview += "..."
+            return preview
+        return "No question text"
+    
+    question_text_preview.short_description = 'Question Preview'

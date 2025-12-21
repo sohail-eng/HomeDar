@@ -1,11 +1,14 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
+import { useAuth } from '../../contexts/AuthContext'
 
 /**
  * Header component with logo, navigation, and responsive design
  */
 function Header() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { isAuthenticated, logout } = useAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   
   const isActive = (path) => location.pathname === path
@@ -15,6 +18,12 @@ function Header() {
     { path: '/favorites', label: 'Favorites' },
     { path: '/contact', label: 'Contact Us' },
   ]
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+    setIsMobileMenuOpen(false)
+  }
   
   return (
     <header className="bg-white shadow-sm sticky top-0 z-40">
@@ -56,6 +65,74 @@ function Header() {
                 {link.label}
               </Link>
             ))}
+            
+            {/* Authentication Icons */}
+            {isAuthenticated ? (
+              <div className="flex items-center space-x-4">
+                <Link
+                  to="/profile"
+                  className="p-2 text-neutral-700 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                  title="Profile"
+                  aria-label="Profile"
+                >
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
+                  </svg>
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="p-2 text-neutral-700 hover:text-error-600 hover:bg-error-50 rounded-lg transition-colors"
+                  title="Logout"
+                  aria-label="Logout"
+                >
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                    />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <Link
+                to="/login"
+                className="p-2 text-neutral-700 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                title="Login"
+                aria-label="Login"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
+                  />
+                </svg>
+              </Link>
+            )}
           </div>
           
           {/* Mobile Menu Button */}
@@ -95,6 +172,78 @@ function Header() {
                 {link.label}
               </Link>
             ))}
+            
+            {/* Mobile Authentication Links */}
+            <div className="border-t border-neutral-200 mt-2 pt-2">
+              {isAuthenticated ? (
+                <>
+                  <Link
+                    to="/profile"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center px-4 py-2 text-base font-medium text-neutral-700 hover:text-primary-600 hover:bg-neutral-50 transition-colors"
+                  >
+                    <svg
+                      className="w-5 h-5 mr-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                      />
+                    </svg>
+                    Profile
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleLogout()
+                      setIsMobileMenuOpen(false)
+                    }}
+                    className="flex items-center w-full px-4 py-2 text-base font-medium text-neutral-700 hover:text-error-600 hover:bg-error-50 transition-colors text-left"
+                  >
+                    <svg
+                      className="w-5 h-5 mr-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                      />
+                    </svg>
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/login"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center px-4 py-2 text-base font-medium text-neutral-700 hover:text-primary-600 hover:bg-neutral-50 transition-colors"
+                >
+                  <svg
+                    className="w-5 h-5 mr-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
+                    />
+                  </svg>
+                  Login
+                </Link>
+              )}
+            </div>
           </div>
         )}
       </nav>

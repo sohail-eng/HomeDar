@@ -3,6 +3,7 @@ import { CategoryProvider } from './CategoryContext'
 import { FilterProvider } from './FilterContext'
 import { SearchProvider } from './SearchContext'
 import { ThemeProvider } from './ThemeContext'
+import { AuthProvider } from './AuthContext'
 
 /**
  * Main App Context Provider
@@ -11,15 +12,17 @@ import { ThemeProvider } from './ThemeContext'
 export const AppProvider = ({ children }) => {
   return (
     <ThemeProvider>
-      <CategoryProvider>
-        <FilterProvider>
-          <SearchProvider>
-            <ProductProvider>
-              {children}
-            </ProductProvider>
-          </SearchProvider>
-        </FilterProvider>
-      </CategoryProvider>
+      <AuthProvider>
+        <CategoryProvider>
+          <FilterProvider>
+            <SearchProvider>
+              <ProductProvider>
+                {children}
+              </ProductProvider>
+            </SearchProvider>
+          </FilterProvider>
+        </CategoryProvider>
+      </AuthProvider>
     </ThemeProvider>
   )
 }

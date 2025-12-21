@@ -18,3 +18,4 @@ requests==2.32.3
 celery==5.3.4
 redis==5.0.1
 django-redis==5.4.0
+djangorestframework-simplejwt==5.3.1

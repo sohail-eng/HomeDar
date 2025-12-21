@@ -7,4 +7,5 @@ export * from './categoryService'
 export * from './subCategoryService'
 export * from './productService'
 export * from './contactService'
+export * from './authService'
 

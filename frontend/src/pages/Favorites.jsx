@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Card, LoadingSpinner, ErrorMessage } from '../components/common'
 import { getFavoriteProducts } from '../services/trackingService'
 import { useBrowserLocation } from '../hooks/useBrowserLocation'
+import { useAuth } from '../contexts/AuthContext'
 import LocationPermissionBanner from '../components/tracking/LocationPermissionBanner'
 
 /**
@@ -11,6 +12,7 @@ import LocationPermissionBanner from '../components/tracking/LocationPermissionB
  */
 function Favorites() {
   const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
   const { status: locationStatus, requestLocation } = useBrowserLocation()
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -172,9 +174,26 @@ function Favorites() {
             className="h-full"
           >
             <div className="mt-2">
-              <p className="text-xl font-bold text-primary-600">
-                {formatPrice(product.price)}
-              </p>
+              {/* Price Display */}
+              {isAuthenticated && product.discount_price ? (
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-xl font-bold text-primary-600">
+                      {formatPrice(product.discount_price)}
+                    </p>
+                    <p className="text-sm text-neutral-500 line-through">
+                      {formatPrice(product.price)}
+                    </p>
+                  </div>
+                  <p className="text-xs text-success-600 font-medium mt-1">
+                    Wholesale Price
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xl font-bold text-primary-600">
+                  {formatPrice(product.price)}
+                </p>
+              )}
               {product.description && (
                 <p className="text-sm text-neutral-600 mt-1 line-clamp-2">
                   {product.description}

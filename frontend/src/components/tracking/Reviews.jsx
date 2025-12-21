@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import PropTypes from 'prop-types'
 import { getProductReviews, createProductReview } from '../../services/trackingService'
 import { useBrowserLocation } from '../../hooks/useBrowserLocation'
+import { useAuth } from '../../contexts/AuthContext'
 import LocationPermissionBanner from './LocationPermissionBanner'
 import { Button, Input, LoadingSpinner } from '../common'
 
@@ -11,12 +12,29 @@ import { Button, Input, LoadingSpinner } from '../common'
  */
 function Reviews({ productId }) {
   const { status: locationStatus, requestLocation } = useBrowserLocation()
+  const { isAuthenticated, user } = useAuth()
   const [reviews, setReviews] = useState([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [formData, setFormData] = useState({ name: '', review_text: '' })
   const [error, setError] = useState(null)
+  
+  // Get user's full name if authenticated
+  const getUserFullName = () => {
+    if (isAuthenticated && user) {
+      if (user.first_name && user.last_name) {
+        return `${user.first_name} ${user.last_name}`.trim()
+      }
+      if (user.first_name) {
+        return user.first_name
+      }
+      if (user.username) {
+        return user.username
+      }
+    }
+    return null
+  }
 
   // Load reviews on mount
   useEffect(() => {
@@ -51,8 +69,11 @@ function Reviews({ productId }) {
     setSubmitting(true)
     setError(null)
 
+    // Use user's full name if authenticated, otherwise use the name from form (or null)
+    const reviewerName = isAuthenticated ? getUserFullName() : (formData.name.trim() || null)
+
     const result = await createProductReview(productId, {
-      name: formData.name.trim() || null,
+      name: reviewerName,
       review_text: formData.review_text.trim(),
     })
 
@@ -121,19 +142,29 @@ function Reviews({ productId }) {
           <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-6 mb-6">
             <h3 className="text-lg font-semibold text-neutral-900 mb-4">Write a Review</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="review-name" className="block text-sm font-medium text-neutral-700 mb-1">
-                  Name (Optional)
-                </label>
-                <Input
-                  id="review-name"
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Your name (optional)"
-                  className="w-full"
-                />
-              </div>
+              {/* Only show name field if user is not authenticated */}
+              {!isAuthenticated && (
+                <div>
+                  <label htmlFor="review-name" className="block text-sm font-medium text-neutral-700 mb-1">
+                    Name (Optional)
+                  </label>
+                  <Input
+                    id="review-name"
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Your name (optional)"
+                    className="w-full"
+                  />
+                </div>
+              )}
+              {/* Show user's name if authenticated */}
+              {isAuthenticated && (
+                <div className="text-sm text-neutral-600 bg-primary-50 border border-primary-200 rounded-lg p-3">
+                  <span className="font-medium">Reviewing as: </span>
+                  <span className="font-semibold text-primary-700">{getUserFullName() || 'User'}</span>
+                </div>
+              )}
               <div>
                 <label htmlFor="review-text" className="block text-sm font-medium text-neutral-700 mb-1">
                   Review <span className="text-red-500">*</span>

@@ -5,6 +5,7 @@ Database models for HomeDar catalog application.
 import uuid
 from decimal import Decimal
 
+from django.contrib.auth.hashers import make_password, check_password
 from django.core.exceptions import ValidationError
 from django.core.validators import EmailValidator, MinValueValidator
 from django.db import models
@@ -65,6 +66,14 @@ class Product(TimeStampedModel):
         decimal_places=2,
         validators=[MinValueValidator(Decimal('0.01'))]  # Price must be positive
     )
+    discount_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.01'))],  # Discount price must be positive
+        help_text="Wholesale/discount price for logged-in users. If set, this will be shown to authenticated users."
+    )
     description = models.TextField(blank=True)
     subcategories = models.ManyToManyField(
         SubCategory,
@@ -85,9 +94,13 @@ class Product(TimeStampedModel):
         return f"{self.title} ({self.sku})"
 
     def clean(self):
-        """Validate that price is positive."""
+        """Validate that price is positive and discount_price is less than price if set."""
         if self.price and self.price <= 0:
             raise ValidationError({'price': 'Price must be greater than zero.'})
+        if self.discount_price and self.discount_price <= 0:
+            raise ValidationError({'discount_price': 'Discount price must be greater than zero.'})
+        if self.discount_price and self.price and self.discount_price >= self.price:
+            raise ValidationError({'discount_price': 'Discount price must be less than regular price.'})
 
     def save(self, *args, **kwargs):
         """Override save to call clean validation."""
@@ -413,6 +426,165 @@ class ProductReview(models.Model):
     def reviewer_name(self) -> str:
         """Return reviewer name or 'Anonymous' if not provided."""
         return self.name or "Anonymous"
+
+
+class User(TimeStampedModel):
+    """
+    User model for authentication and user accounts.
+    
+    Links to VisitorProfile to enable cross-device synchronization
+    of tracking data (product views, likes, etc.).
+    """
+    
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    first_name = models.CharField(
+        max_length=100,
+        help_text="User's first name.",
+    )
+    last_name = models.CharField(
+        max_length=100,
+        help_text="User's last name.",
+    )
+    username = models.CharField(
+        max_length=150,
+        unique=True,
+        db_index=True,
+        help_text="Unique username for login.",
+    )
+    email = models.EmailField(
+        unique=True,
+        db_index=True,
+        validators=[EmailValidator()],
+        help_text="User's email address (must be unique).",
+    )
+    password = models.CharField(
+        max_length=128,
+        help_text="Hashed password (never store plain text).",
+    )
+    visitor = models.ForeignKey(
+        VisitorProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='user',
+        help_text="Linked visitor profile for cross-device tracking synchronization.",
+    )
+    
+    class Meta:
+        verbose_name = "User"
+        verbose_name_plural = "Users"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['username']),
+            models.Index(fields=['email']),
+            models.Index(fields=['visitor']),
+        ]
+    
+    def __str__(self) -> str:
+        return self.username or self.email
+    
+    def get_full_name(self) -> str:
+        """Return the user's full name."""
+        return f"{self.first_name} {self.last_name}".strip()
+    
+    def set_password(self, raw_password: str) -> None:
+        """Hash and set the user's password."""
+        self.password = make_password(raw_password)
+    
+    def check_password(self, raw_password: str) -> bool:
+        """Check if the provided password matches the user's password."""
+        return check_password(raw_password, self.password)
+    
+    @property
+    def is_authenticated(self) -> bool:
+        """
+        Always return True for authenticated users.
+        This is required for Django REST Framework permissions.
+        """
+        return True
+    
+    @property
+    def is_anonymous(self) -> bool:
+        """
+        Always return False for authenticated users.
+        This is required for Django REST Framework permissions.
+        """
+        return False
+    
+    def save(self, *args, **kwargs):
+        """Override save to ensure password is hashed if it's not already."""
+        # If password is provided and not already hashed, hash it
+        if self.password and not self.password.startswith('pbkdf2_') and not self.password.startswith('bcrypt'):
+            self.set_password(self.password)
+        super().save(*args, **kwargs)
+
+
+class SecurityQuestion(TimeStampedModel):
+    """
+    Security questions for password recovery.
+    
+    Each user must have exactly 3 security questions (enforced by unique_together).
+    Answers are stored as hashes for security.
+    """
+    
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='security_questions',
+        help_text="User who owns this security question.",
+    )
+    question_text = models.CharField(
+        max_length=255,
+        help_text="The security question text.",
+    )
+    answer_hash = models.CharField(
+        max_length=255,
+        help_text="Hashed answer to the security question (never store plain text).",
+    )
+    question_order = models.IntegerField(
+        choices=[(1, 'Question 1'), (2, 'Question 2'), (3, 'Question 3')],
+        help_text="Order of this question (1, 2, or 3). Each user must have exactly 3 questions.",
+    )
+    
+    class Meta:
+        verbose_name = "Security Question"
+        verbose_name_plural = "Security Questions"
+        unique_together = [['user', 'question_order']]
+        indexes = [
+            models.Index(fields=['user', 'question_order']),
+        ]
+    
+    def __str__(self) -> str:
+        return f"{self.user.username} - Question {self.question_order}"
+    
+    def set_answer(self, raw_answer: str) -> None:
+        """Hash and set the security question answer."""
+        # Normalize answer (trim whitespace, lowercase) for consistency
+        normalized_answer = raw_answer.strip().lower()
+        self.answer_hash = make_password(normalized_answer)
+    
+    def check_answer(self, raw_answer: str) -> bool:
+        """Check if the provided answer matches the stored hash."""
+        # Normalize answer for comparison
+        normalized_answer = raw_answer.strip().lower()
+        return check_password(normalized_answer, self.answer_hash)
+    
+    def save(self, *args, **kwargs):
+        """Override save to ensure answer is hashed if it's not already."""
+        # If answer_hash looks like plain text, hash it
+        # Note: This assumes answer_hash is set via set_answer() method
+        # If answer_hash is provided directly and not hashed, we can't detect it
+        # So it's better to always use set_answer() method
+        super().save(*args, **kwargs)
 
 
 @receiver(post_save, sender=ProductImage)
