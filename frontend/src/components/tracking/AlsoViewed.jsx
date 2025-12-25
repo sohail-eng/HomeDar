@@ -102,6 +102,13 @@ function AlsoViewed({ productId, onProductClick }) {
               subtitle={getPriceDisplay(product)}
               image={getMainImageUrl(product)}
               imageAlt={product.title}
+              imageBadge={
+                product.discount_percentage ? (
+                  <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow">
+                    {product.discount_percentage}% OFF
+                  </span>
+                ) : null
+              }
               hover
               onClick={() => onProductClick && onProductClick(product.id)}
             />

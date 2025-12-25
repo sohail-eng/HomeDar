@@ -79,10 +79,11 @@ class ProductListSerializer(serializers.ModelSerializer):
     main_image = serializers.SerializerMethodField()
     main_image_url = serializers.SerializerMethodField()
     discount_price = serializers.SerializerMethodField()
+    discount_percentage = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
-        fields = ['id', 'title', 'sku', 'price', 'discount_price', 'main_image', 'main_image_url']
+        fields = ['id', 'title', 'sku', 'price', 'discount_price', 'discount_percentage', 'main_image', 'main_image_url']
         read_only_fields = ['id']
     
     def get_main_image(self, obj):
@@ -120,17 +121,26 @@ class ProductListSerializer(serializers.ModelSerializer):
             return str(obj.discount_price) if obj.discount_price else None
         return None
 
+    def get_discount_percentage(self, obj):
+        """
+        Return discount percentage (integer) when a valid discount exists.
+        This is always exposed so everyone can see how much is off,
+        even if the exact wholesale price is only shown to authenticated users.
+        """
+        return obj.get_discount_percentage()
+
 
 class ProductDetailSerializer(serializers.ModelSerializer):
     """Full product details serializer with nested relationships."""
     subcategories = SubCategorySerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
     discount_price = serializers.SerializerMethodField()
+    discount_percentage = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
         fields = [
-            'id', 'title', 'sku', 'price', 'discount_price', 'description',
+            'id', 'title', 'sku', 'price', 'discount_price', 'discount_percentage', 'description',
             'subcategories', 'images', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -141,6 +151,10 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         if request and request.user and request.user.is_authenticated:
             return str(obj.discount_price) if obj.discount_price else None
         return None
+
+    def get_discount_percentage(self, obj):
+        """Return discount percentage when a valid discount exists."""
+        return obj.get_discount_percentage()
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -148,11 +162,12 @@ class ProductSerializer(serializers.ModelSerializer):
     subcategories = SubCategorySerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
     discount_price = serializers.SerializerMethodField()
+    discount_percentage = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
         fields = [
-            'id', 'title', 'sku', 'price', 'discount_price', 'description',
+            'id', 'title', 'sku', 'price', 'discount_price', 'discount_percentage', 'description',
             'subcategories', 'images', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -163,6 +178,10 @@ class ProductSerializer(serializers.ModelSerializer):
         if request and request.user and request.user.is_authenticated:
             return str(obj.discount_price) if obj.discount_price else None
         return None
+
+    def get_discount_percentage(self, obj):
+        """Return discount percentage when a valid discount exists."""
+        return obj.get_discount_percentage()
 
 
 class ContactUsSerializer(serializers.ModelSerializer):
@@ -562,6 +581,63 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return None
 
 
+class SignupRequestCodeSerializer(serializers.Serializer):
+    """
+    Serializer for requesting a signup OTP code.
+    
+    Accepts:
+    - first_name, last_name, username, email, password (same validations as UserSignupSerializer)
+    - visitor_id (optional)
+    """
+
+    first_name = serializers.CharField(max_length=100, required=True)
+    last_name = serializers.CharField(max_length=100, required=True)
+    username = serializers.CharField(max_length=150, required=True)
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(write_only=True, required=True, min_length=8)
+    visitor_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
+    # Reuse validation logic from UserSignupSerializer where possible
+    validate_first_name = UserSignupSerializer.validate_first_name
+    validate_last_name = UserSignupSerializer.validate_last_name
+    validate_username = UserSignupSerializer.validate_username
+    validate_email = UserSignupSerializer.validate_email
+    validate_password = UserSignupSerializer.validate_password
+    validate_visitor_id = UserSignupSerializer.validate_visitor_id
+
+
+class SignupVerifyCodeSerializer(serializers.Serializer):
+    """
+    Serializer for verifying a signup OTP code and creating the user.
+    
+    Accepts:
+    - first_name, last_name, username, email, password, visitor_id
+    - code (required, 4-digit string)
+    """
+
+    first_name = serializers.CharField(max_length=100, required=True)
+    last_name = serializers.CharField(max_length=100, required=True)
+    username = serializers.CharField(max_length=150, required=True)
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(write_only=True, required=True, min_length=8)
+    visitor_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    code = serializers.CharField(required=True, max_length=4)
+
+    # Reuse logic from UserSignupSerializer
+    validate_first_name = UserSignupSerializer.validate_first_name
+    validate_last_name = UserSignupSerializer.validate_last_name
+    validate_username = UserSignupSerializer.validate_username
+    validate_email = UserSignupSerializer.validate_email
+    validate_password = UserSignupSerializer.validate_password
+    validate_visitor_id = UserSignupSerializer.validate_visitor_id
+
+    def validate_code(self, value):
+        value = value.strip()
+        if len(value) != 4 or not value.isdigit():
+            raise serializers.ValidationError("Code must be a 4-digit number.")
+        return value
+
+
 class ForgotPasswordStep1Serializer(serializers.Serializer):
     """
     Serializer for forgot password step 1 (username or email validation).
@@ -647,6 +723,74 @@ class ForgotPasswordStep2Serializer(serializers.Serializer):
         except SecurityQuestion.DoesNotExist:
             raise serializers.ValidationError({"question_order": "Security question not found for this user."})
         
+        return attrs
+
+
+class PasswordResetRequestCodeSerializer(serializers.Serializer):
+    """
+    Serializer for requesting a password reset OTP code.
+
+    Accepts:
+    - username_or_email (required)
+    """
+
+    username_or_email = serializers.CharField(required=True)
+
+    def validate_username_or_email(self, value):
+        value = value.strip()
+
+        try:
+            user = User.objects.get(username=value)
+            self.context["user"] = user
+        except User.DoesNotExist:
+            try:
+                user = User.objects.get(email=value.lower())
+                self.context["user"] = user
+            except User.DoesNotExist:
+                raise serializers.ValidationError("No user found with this username or email address.")
+
+        return value
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """
+    Serializer for confirming password reset with OTP.
+
+    Accepts:
+    - username_or_email (required)
+    - code (required, 4-digit)
+    - password (required, new password)
+    """
+
+    username_or_email = serializers.CharField(required=True)
+    code = serializers.CharField(required=True, max_length=4)
+    password = serializers.CharField(required=True, min_length=8, write_only=True)
+
+    def validate_code(self, value):
+        value = value.strip()
+        if len(value) != 4 or not value.isdigit():
+            raise serializers.ValidationError("Code must be a 4-digit number.")
+        return value
+
+    def validate_password(self, value):
+        # Reuse password strength rules from ForgotPasswordStep2Serializer
+        return ForgotPasswordStep2Serializer.validate_password(self, value)
+
+    def validate(self, attrs):
+        username_or_email = attrs.get("username_or_email", "").strip()
+
+        # Try to find user by username or email
+        try:
+            user = User.objects.get(username=username_or_email)
+        except User.DoesNotExist:
+            try:
+                user = User.objects.get(email=username_or_email.lower())
+            except User.DoesNotExist:
+                raise serializers.ValidationError(
+                    {"username_or_email": "No user found with this username or email address."}
+                )
+
+        attrs["user"] = user
         return attrs
 
 

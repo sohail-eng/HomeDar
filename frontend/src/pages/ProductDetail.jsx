@@ -173,6 +173,14 @@ function ProductDetail() {
             enableSwipe={true}
             autoPlay={false}
           />
+          {/* Discount Percentage Badge - always show when backend provides it */}
+          {currentProduct.discount_percentage && (
+              <div className="absolute top-3 left-3 z-10">
+                <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow">
+                  {currentProduct.discount_percentage}% OFF
+                </span>
+              </div>
+          )}
           {/* Like Button - Only show if location is granted */}
           {locationStatus === 'granted' && currentProduct?.id && (
             <LikeButton productId={currentProduct.id} />
@@ -181,6 +189,14 @@ function ProductDetail() {
         
         {/* Product Information */}
         <div className="space-y-6">
+        {/* Login Banner for Wholesale Prices */}
+        {!isAuthenticated && currentProduct.discount_percentage && (
+          <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+            <span className="font-semibold">Login required:</span>{' '}
+            Login to view the discount prices of the products.
+          </div>
+        )}
+
           {/* Title */}
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-neutral-900 mb-2">
@@ -193,8 +209,8 @@ function ProductDetail() {
           
           {/* Price */}
           <div className="border-t border-b border-neutral-200 py-4">
-            {isAuthenticated && currentProduct.discount_price ? (
-              <div className="space-y-2">
+            <div className="space-y-2">
+              {isAuthenticated && currentProduct.discount_percentage ? (
                 <div className="flex items-baseline gap-3">
                   <span className="text-4xl font-bold text-primary-600">
                     {formatPrice(currentProduct.discount_price)}
@@ -203,17 +219,19 @@ function ProductDetail() {
                     {formatPrice(currentProduct.price)}
                   </span>
                 </div>
-                <p className="text-sm text-success-600 font-medium">
+              ) : (
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl font-bold text-primary-600">
+                    {formatPrice(currentProduct.price)}
+                  </span>
+                </div>
+              )}
+              {currentProduct.discount_percentage ? (
+                <p className="text-sm text-red-600 font-medium">
                   Wholesale Price
                 </p>
-              </div>
-            ) : (
-              <div className="flex items-baseline gap-2">
-                <span className="text-4xl font-bold text-primary-600">
-                  {formatPrice(currentProduct.price)}
-                </span>
-              </div>
-            )}
+              ) : null}
+            </div>
           </div>
           
           {/* Description */}

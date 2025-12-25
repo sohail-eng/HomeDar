@@ -186,6 +186,125 @@ export const signup = async (userData) => {
 }
 
 /**
+ * Request signup OTP code (4-digit) to be sent to user's email.
+ * Uses: POST /auth/signup/request-code/
+ */
+export const requestSignupCode = async (userData) => {
+  try {
+    await api.post('/auth/signup/request-code/', userData)
+    return {
+      success: true,
+      error: null,
+      fieldErrors: null,
+    }
+  } catch (error) {
+    // Reuse signup-style field error extraction if backend returns them
+    let fieldErrors = null
+    let generalError = null
+
+    if (error.response?.data && typeof error.response.data === 'object') {
+      const data = error.response.data
+
+      if (data.detail) {
+        generalError = Array.isArray(data.detail) ? data.detail[0] : data.detail
+      } else if (data.error) {
+        generalError = Array.isArray(data.error) ? data.error[0] : data.error
+      } else if (data.message) {
+        generalError = Array.isArray(data.message) ? data.message[0] : data.message
+      }
+
+      const fieldKeys = Object.keys(data).filter(
+        key => !['detail', 'error', 'message', 'code'].includes(key.toLowerCase())
+      )
+
+      if (fieldKeys.length > 0) {
+        fieldErrors = {}
+        fieldKeys.forEach((field) => {
+          if (Array.isArray(data[field]) && data[field].length > 0) {
+            fieldErrors[field] = data[field][0]
+          } else if (typeof data[field] === 'string' && data[field].trim()) {
+            fieldErrors[field] = data[field]
+          }
+        })
+      }
+    }
+
+    return {
+      success: false,
+      error: generalError || handleApiError(error),
+      fieldErrors,
+    }
+  }
+}
+
+/**
+ * Verify signup OTP code and complete account creation.
+ * Uses: POST /auth/signup/verify-code/
+ */
+export const verifySignupCode = async (payload) => {
+  try {
+    const response = await api.post('/auth/signup/verify-code/', payload)
+
+    const { user, access, refresh, visitor_id } = response.data
+
+    // Save existing visitor_id as old_visitor_id before updating
+    const currentVisitorId = getVisitorId()
+    if (currentVisitorId) {
+      saveOldVisitorId(currentVisitorId)
+    }
+
+    // Store tokens and user data
+    storeTokens(access, refresh)
+    storeUser(user)
+
+    // Save visitor_id from response
+    if (visitor_id) {
+      saveVisitorId(visitor_id)
+    }
+
+    return {
+      success: true,
+      data: {
+        user,
+        access,
+        refresh,
+        visitor_id,
+      },
+      error: null,
+      fieldErrors: null,
+    }
+  } catch (error) {
+    let generalError = null
+    let errorCode = null
+
+    if (error.response?.data && typeof error.response.data === 'object') {
+      const data = error.response.data
+      errorCode = data.code || null
+
+      if (data.detail) {
+        generalError = Array.isArray(data.detail) ? data.detail[0] : data.detail
+      }
+    }
+
+    // Map known OTP error codes to friendly messages
+    if (errorCode === 'invalid_code') {
+      generalError = 'The code you entered is incorrect. Please try again.'
+    } else if (errorCode === 'code_expired') {
+      generalError = 'This code has expired. Please request a new one.'
+    } else if (errorCode === 'too_many_attempts') {
+      generalError = 'Too many incorrect attempts. We have invalidated this code. Please try again later.'
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: generalError || handleApiError(error),
+      fieldErrors: null,
+    }
+  }
+}
+
+/**
  * User login
  * @param {Object} credentials - Login credentials
  * @param {string} credentials.username_or_email - Username or email
@@ -283,6 +402,71 @@ export const forgotPasswordStep2 = async (data) => {
       success: false,
       data: null,
       error: handleApiError(error),
+    }
+  }
+}
+
+/**
+ * Request a 4-digit code for password reset.
+ * Uses: POST /auth/password-reset/request-code/
+ */
+export const requestPasswordResetCode = async (usernameOrEmail) => {
+  try {
+    await api.post('/auth/password-reset/request-code/', {
+      username_or_email: usernameOrEmail,
+    })
+
+    return {
+      success: true,
+      error: null,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: handleApiError(error),
+    }
+  }
+}
+
+/**
+ * Confirm password reset using 4-digit code and new password.
+ * Uses: POST /auth/password-reset/confirm/
+ */
+export const confirmPasswordReset = async ({ usernameOrEmail, code, password }) => {
+  try {
+    await api.post('/auth/password-reset/confirm/', {
+      username_or_email: usernameOrEmail,
+      code,
+      password,
+    })
+
+    return {
+      success: true,
+      error: null,
+    }
+  } catch (error) {
+    let generalError = null
+    let errorCode = null
+
+    if (error.response?.data && typeof error.response.data === 'object') {
+      const data = error.response.data
+      errorCode = data.code || null
+      if (data.detail) {
+        generalError = Array.isArray(data.detail) ? data.detail[0] : data.detail
+      }
+    }
+
+    if (errorCode === 'invalid_code') {
+      generalError = 'The code you entered is incorrect. Please try again.'
+    } else if (errorCode === 'code_expired') {
+      generalError = 'This code has expired. Please request a new one.'
+    } else if (errorCode === 'too_many_attempts') {
+      generalError = 'Too many incorrect attempts. We have invalidated this code. Please try again later.'
+    }
+
+    return {
+      success: false,
+      error: generalError || handleApiError(error),
     }
   }
 }
@@ -401,6 +585,10 @@ export default {
   login,
   forgotPasswordStep1,
   forgotPasswordStep2,
+  requestSignupCode,
+  verifySignupCode,
+  requestPasswordResetCode,
+  confirmPasswordReset,
   getProfile,
   updateProfile,
   refreshToken,

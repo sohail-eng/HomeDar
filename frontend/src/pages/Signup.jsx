@@ -1,26 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import Input from '../components/common/Input'
-import Select from '../components/common/Select'
 import Button from '../components/common/Button'
 import ErrorMessage from '../components/common/ErrorMessage'
-import { signup } from '../services/authService'
+import { requestSignupCode, verifySignupCode } from '../services/authService'
 import { useAuth } from '../contexts/AuthContext'
 import { getOrCreateVisitorId } from '../utils/visitor'
-
-// Predefined Security Questions
-const SECURITY_QUESTIONS = [
-  "What was the name of your first pet?",
-  "What city were you born in?",
-  "What was your mother's maiden name?",
-  "What was the name of your elementary school?",
-  "What was your childhood nickname?",
-  "What is your favorite movie?",
-  "What was the make of your first car?",
-  "What is your favorite food?",
-  "What was the name of your best friend in childhood?",
-  "What is your favorite book?",
-]
 
 function Signup() {
   const navigate = useNavigate()
@@ -34,16 +19,14 @@ function Signup() {
     email: '',
     password: '',
     confirmPassword: '',
-    security_questions: [
-      { question_text: '', answer: '', question_order: 1 },
-      { question_text: '', answer: '', question_order: 2 },
-      { question_text: '', answer: '', question_order: 3 },
-    ],
   })
 
   const [errors, setErrors] = useState({})
   const [submitError, setSubmitError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [step, setStep] = useState(1) // 1: details, 2: code verification
+  const [code, setCode] = useState('')
+  const [infoMessage, setInfoMessage] = useState('')
   const [passwordStrength, setPasswordStrength] = useState({
     score: 0,
     feedback: [],
@@ -178,34 +161,14 @@ function Signup() {
     return null
   }
 
-  const validateSecurityQuestion = (index) => {
-    const question = formData.security_questions[index]
-    if (!question.question_text || !question.question_text.trim()) {
-      return `Security Question ${index + 1}: Please select a question`
+  const validateCode = (value) => {
+    if (!value || !value.trim()) {
+      return 'Verification code is required'
     }
-    if (!question.answer || !question.answer.trim()) {
-      return `Security Question ${index + 1}: Answer is required`
+    const trimmed = value.trim()
+    if (!/^\d{4}$/.test(trimmed)) {
+      return 'Code must be a 4-digit number'
     }
-    if (question.answer.trim().length > 100) {
-      return `Security Question ${index + 1}: Answer must be at most 100 characters long`
-    }
-    return null
-  }
-
-  const validateUniqueQuestions = () => {
-    const questions = formData.security_questions
-      .map((q) => q.question_text.trim())
-      .filter((q) => q)
-
-    if (questions.length !== 3) {
-      return 'Please select all 3 security questions'
-    }
-
-    const uniqueQuestions = new Set(questions)
-    if (uniqueQuestions.size !== 3) {
-      return 'All security questions must be unique'
-    }
-
     return null
   }
 
@@ -229,51 +192,6 @@ function Signup() {
     if (submitError) {
       setSubmitError('')
     }
-  }
-
-  // Handle security question change
-  const handleSecurityQuestionChange = (questionIndex, field, value) => {
-    setFormData((prev) => {
-      const updatedQuestions = [...prev.security_questions]
-      updatedQuestions[questionIndex] = {
-        ...updatedQuestions[questionIndex],
-        [field]: value,
-      }
-      return {
-        ...prev,
-        security_questions: updatedQuestions,
-      }
-    })
-
-    // Clear error for this security question
-    const errorKey = `security_question_${questionIndex}`
-    if (errors[errorKey]) {
-      setErrors((prev) => ({
-        ...prev,
-        [errorKey]: null,
-      }))
-    }
-
-    // Clear unique questions error
-    if (errors.security_questions) {
-      setErrors((prev) => ({
-        ...prev,
-        security_questions: null,
-      }))
-    }
-  }
-
-  // Get available questions for a dropdown (exclude already selected ones)
-  const getAvailableQuestions = (currentIndex) => {
-    const selectedQuestions = formData.security_questions
-      .map((q, idx) => (idx !== currentIndex ? q.question_text : null))
-      .filter((q) => q && q.trim())
-    
-    return SECURITY_QUESTIONS.map((question) => ({
-      value: question,
-      label: question,
-      disabled: selectedQuestions.includes(question),
-    }))
   }
 
   // Validate all fields
@@ -302,20 +220,6 @@ function Signup() {
     )
     if (confirmPasswordError) newErrors.confirmPassword = confirmPasswordError
 
-    // Validate security questions
-    formData.security_questions.forEach((question, index) => {
-      const questionError = validateSecurityQuestion(index)
-      if (questionError) {
-        newErrors[`security_question_${index}`] = questionError
-      }
-    })
-
-    // Validate unique questions
-    const uniqueError = validateUniqueQuestions()
-    if (uniqueError) {
-      newErrors.security_questions = uniqueError
-    }
-
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -329,126 +233,138 @@ function Signup() {
       formData.email.trim() &&
       formData.password &&
       formData.confirmPassword &&
-      formData.security_questions.every(
-        (q) => q.question_text.trim() && q.answer.trim()
-      ) &&
       !validateFirstName(formData.first_name) &&
       !validateLastName(formData.last_name) &&
       !validateUsername(formData.username) &&
       !validateEmail(formData.email) &&
       !validatePassword(formData.password) &&
-      !validateConfirmPassword(formData.confirmPassword, formData.password) &&
-      !validateUniqueQuestions()
+      !validateConfirmPassword(formData.confirmPassword, formData.password)
     )
   }
 
-  // Handle form submission
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleCodeChange = (e) => {
+    const value = e.target.value
+    setCode(value)
 
-    // Validate form
+    if (errors.code) {
+      setErrors((prev) => ({
+        ...prev,
+        code: null,
+      }))
+    }
+    if (submitError) {
+      setSubmitError('')
+    }
+  }
+
+  // Step 1: request signup code
+  const handleRequestCode = async () => {
     if (!validateForm()) {
       return
     }
 
     setIsSubmitting(true)
     setSubmitError('')
-    // Clear previous field errors
     setErrors({})
 
     try {
-      // Get visitor_id from localStorage
-      const visitorId = getOrCreateVisitorId()
-
-      // Prepare signup data
       const signupData = {
         first_name: formData.first_name.trim(),
         last_name: formData.last_name.trim(),
         username: formData.username.trim(),
         email: formData.email.trim().toLowerCase(),
         password: formData.password,
-        visitor_id: visitorId,
-        security_questions: formData.security_questions.map((q) => ({
-          question_text: q.question_text.trim(),
-          answer: q.answer.trim(),
-          question_order: q.question_order,
-        })),
       }
 
-      // Call signup API
-      const result = await signup(signupData)
+      const result = await requestSignupCode(signupData)
+
+      if (result.success) {
+        setStep(2)
+        setInfoMessage(
+          `We have sent a 4-digit verification code to ${signupData.email}. Please enter it below to complete your signup.`
+        )
+      } else {
+        const newErrors = {}
+        if (result.fieldErrors) {
+          Object.keys(result.fieldErrors).forEach((field) => {
+            newErrors[field] = result.fieldErrors[field]
+          })
+        }
+        if (Object.keys(newErrors).length > 0) {
+          setErrors(newErrors)
+        }
+        if (result.error) {
+          setSubmitError(result.error)
+        }
+      }
+    } catch (error) {
+      console.error('Signup request code error:', error)
+      setSubmitError('An unexpected error occurred. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Step 2: verify code and complete signup
+  const handleVerifyCode = async () => {
+    const codeError = validateCode(code)
+    if (codeError) {
+      setErrors((prev) => ({ ...prev, code: codeError }))
+      return
+    }
+
+    setIsSubmitting(true)
+    setSubmitError('')
+    setErrors({})
+
+    try {
+      const visitorId = getOrCreateVisitorId()
+
+      const payload = {
+        first_name: formData.first_name.trim(),
+        last_name: formData.last_name.trim(),
+        username: formData.username.trim(),
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+        visitor_id: visitorId,
+        code: code.trim(),
+      }
+
+      const result = await verifySignupCode(payload)
 
       if (result.success) {
         try {
-          // Login user automatically
           await authLogin(result.data.user, {
             access: result.data.access,
             refresh: result.data.refresh,
           })
-
-          // Redirect to profile page
           navigate('/profile', { replace: true })
         } catch (loginError) {
           console.error('Error during auto-login after signup:', loginError)
-          // Even if login fails, redirect to login page
           setSubmitError('Account created successfully, but automatic login failed. Please log in manually.')
           navigate('/login', { replace: true })
         }
       } else {
-        // Handle field-specific errors from API
-        if (result.fieldErrors) {
-          const newErrors = {}
-          
-          // Map API field errors to form field errors
-          Object.keys(result.fieldErrors).forEach((field) => {
-            // Map API field names to form field names
-            const formField = field === 'security_questions' ? 'security_questions' : field
-            newErrors[formField] = result.fieldErrors[field]
-            
-            // Handle security questions errors if they come as a nested structure
-            if (field.startsWith('security_questions')) {
-              // Extract question index if present (e.g., security_questions.0.question_text)
-              const match = field.match(/security_questions\[(\d+)\]\.(\w+)/)
-              if (match) {
-                const index = parseInt(match[1])
-                const subField = match[2]
-                const errorKey = `security_question_${index}`
-                if (!newErrors[errorKey]) {
-                  newErrors[errorKey] = result.fieldErrors[field]
-                } else {
-                  newErrors[errorKey] += ` ${result.fieldErrors[field]}`
-                }
-              } else {
-                newErrors['security_questions'] = result.fieldErrors[field]
-              }
-            }
-          })
-          
-          setErrors(newErrors)
-          
-          // Also show a general error message if provided
-          if (result.error) {
-            setSubmitError(result.error)
-          }
-        } else {
-          // General error message (no field-specific errors)
-          setSubmitError(result.error || 'Signup failed. Please try again.')
+        if (result.error) {
+          setSubmitError(result.error)
         }
       }
     } catch (error) {
-      console.error('Signup error:', error)
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        response: error.response?.data,
-      })
-      setSubmitError(
-        error.response?.data?.detail || 
-        error.message || 
-        'An unexpected error occurred. Please try again.'
-      )
+      console.error('Signup verify code error:', error)
+      setSubmitError('An unexpected error occurred. Please try again.')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  // Handle form submission
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+
+    if (step === 1) {
+      await handleRequestCode()
+    } else {
+      await handleVerifyCode()
     }
   }
 
@@ -582,53 +498,34 @@ function Signup() {
             placeholder="Confirm your password"
           />
 
-          {/* Security Questions */}
-          <div className="space-y-4 pt-4 border-t border-neutral-200">
-            <h3 className="text-lg font-semibold text-neutral-900 mb-4">
-              Security Questions
-            </h3>
-            <p className="text-sm text-neutral-600 mb-4">
-              Please select and answer 3 security questions. These will be used to recover your password if you forget it.
-            </p>
-
-            {errors.security_questions && (
-              <ErrorMessage message={errors.security_questions} />
-            )}
-
-            {formData.security_questions.map((question, index) => (
-              <div key={index} className="space-y-2">
-                <Select
-                  label={`Security Question ${index + 1}`}
-                  options={getAvailableQuestions(index)}
-                  value={question.question_text}
-                  onChange={(value) =>
-                    handleSecurityQuestionChange(index, 'question_text', value)
-                  }
-                  error={errors[`security_question_${index}`]}
-                  required
-                  disabled={isSubmitting}
-                  placeholder="Select a security question"
-                />
-                <Input
-                  type="text"
-                  label={`Answer for Question ${index + 1}`}
-                  value={question.answer}
-                  onChange={(e) =>
-                    handleSecurityQuestionChange(index, 'answer', e.target.value)
-                  }
-                  error={
-                    errors[`security_question_${index}`]?.includes('Answer')
-                      ? errors[`security_question_${index}`]
-                      : null
-                  }
-                  required
-                  disabled={isSubmitting}
-                  placeholder="Enter your answer"
-                  helperText="Max 100 characters"
-                />
-              </div>
-            ))}
-          </div>
+          {/* OTP Step 2: Verification Code */}
+          {step === 2 && (
+            <div className="space-y-4 pt-4 border-t border-neutral-200">
+              <h3 className="text-lg font-semibold text-neutral-900 mb-2">
+                Verify Your Email
+              </h3>
+              <p className="text-sm text-neutral-600 mb-2">
+                Enter the 4-digit verification code we sent to your email address.
+              </p>
+              {infoMessage && (
+                <p className="text-sm text-primary-700 bg-primary-50 border border-primary-100 rounded-md px-3 py-2">
+                  {infoMessage}
+                </p>
+              )}
+              <Input
+                type="text"
+                name="code"
+                label="Verification Code"
+                value={code}
+                onChange={handleCodeChange}
+                error={errors.code}
+                required
+                disabled={isSubmitting}
+                placeholder="Enter 4-digit code"
+                maxLength={4}
+              />
+            </div>
+          )}
 
           {/* Submit Error Message */}
           {submitError && <ErrorMessage message={submitError} />}
@@ -640,7 +537,7 @@ function Signup() {
               variant="primary"
               size="lg"
               fullWidth
-              disabled={!isFormValid() || isSubmitting}
+              disabled={isSubmitting || (step === 1 && !isFormValid())}
             >
               {isSubmitting ? (
                 <span className="flex items-center justify-center">
@@ -664,10 +561,10 @@ function Signup() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                   </svg>
-                  Creating Account...
+                  {step === 1 ? 'Sending Code...' : 'Creating Account...'}
                 </span>
               ) : (
-                'Create Account'
+                step === 1 ? 'Send Verification Code' : 'Create Account'
               )}
             </Button>
           </div>

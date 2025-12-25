@@ -5,7 +5,7 @@ import Button from '../components/common/Button'
 import ErrorMessage from '../components/common/ErrorMessage'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import PasswordFields from '../components/common/PasswordFields'
-import { forgotPasswordStep1, forgotPasswordStep2 } from '../services/authService'
+import { requestPasswordResetCode, confirmPasswordReset } from '../services/authService'
 
 function ForgotPassword() {
   const navigate = useNavigate()
@@ -13,9 +13,7 @@ function ForgotPassword() {
   // State management
   const [currentStep, setCurrentStep] = useState(1) // 1, 2, or 3
   const [usernameOrEmail, setUsernameOrEmail] = useState('')
-  const [questions, setQuestions] = useState([]) // Array of 3 questions from step 1
-  const [selectedQuestionOrder, setSelectedQuestionOrder] = useState(null) // 1, 2, or 3
-  const [answer, setAnswer] = useState('')
+  const [code, setCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [resetSuccess, setResetSuccess] = useState(false) // Password reset success flag
@@ -31,13 +29,14 @@ function ForgotPassword() {
     return null
   }
 
-  // Validate answer
-  const validateAnswer = (value) => {
+  // Validate code
+  const validateCode = (value) => {
     if (!value || !value.trim()) {
-      return 'Answer is required'
+      return 'Verification code is required'
     }
-    if (value.trim().length > 100) {
-      return 'Answer must be at most 100 characters long'
+    const trimmed = value.trim()
+    if (!/^\d{4}$/.test(trimmed)) {
+      return 'Code must be a 4-digit number'
     }
     return null
   }
@@ -120,27 +119,16 @@ function ForgotPassword() {
     }
   }
 
-  // Handle answer input change
-  const handleAnswerChange = (e) => {
+  // Handle code change
+  const handleCodeChange = (e) => {
     const value = e.target.value
-    setAnswer(value)
-    
-    // Clear errors when user starts typing
-    if (errors.answer) {
-      setErrors((prev) => ({ ...prev, answer: null }))
+    setCode(value)
+
+    if (errors.code) {
+      setErrors((prev) => ({ ...prev, code: null }))
     }
     if (submitError) {
       setSubmitError('')
-    }
-  }
-
-  // Handle question selection
-  const handleQuestionSelect = (questionOrder) => {
-    setSelectedQuestionOrder(questionOrder)
-    
-    // Clear errors when user selects a question
-    if (errors.selectedQuestion) {
-      setErrors((prev) => ({ ...prev, selectedQuestion: null }))
     }
   }
 
@@ -161,15 +149,12 @@ function ForgotPassword() {
 
     try {
       const input = usernameOrEmail.trim()
-      const result = await forgotPasswordStep1(input)
+      const result = await requestPasswordResetCode(input)
 
       if (result.success) {
-        // Store questions and move to step 2
-        setQuestions(result.data.questions || [])
         setCurrentStep(2)
       } else {
-        // Display error message
-        setSubmitError(result.error || 'Username or email not found. Please check and try again.')
+        setSubmitError(result.error || 'Unable to send verification code. Please try again.')
       }
     } catch (error) {
       console.error('Forgot password step 1 error:', error)
@@ -183,16 +168,10 @@ function ForgotPassword() {
   const handleStep2Submit = async (e) => {
     e.preventDefault()
 
-    // Validate selected question
-    if (!selectedQuestionOrder) {
-      setErrors({ selectedQuestion: 'Please select a security question' })
-      return
-    }
-
-    // Validate answer
-    const answerError = validateAnswer(answer)
-    if (answerError) {
-      setErrors({ answer: answerError })
+    // Validate code
+    const codeError = validateCode(code)
+    if (codeError) {
+      setErrors({ code: codeError })
       return
     }
 
@@ -219,10 +198,9 @@ function ForgotPassword() {
       const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input)
       const emailOrUsername = isEmail ? input.toLowerCase() : input
       
-      const result = await forgotPasswordStep2({
-        username_or_email: emailOrUsername,
-        question_order: selectedQuestionOrder,
-        answer: answer.trim(),
+      const result = await confirmPasswordReset({
+        usernameOrEmail: emailOrUsername,
+        code: code.trim(),
         password: newPassword,
       })
 
@@ -232,7 +210,7 @@ function ForgotPassword() {
         setCurrentStep(3)
       } else {
         // Display error message
-        setSubmitError(result.error || 'Incorrect answer. Please try again.')
+        setSubmitError(result.error || 'Unable to reset password. Please check your code and try again.')
       }
     } catch (error) {
       console.error('Forgot password step 2 error:', error)
@@ -247,8 +225,7 @@ function ForgotPassword() {
     if (currentStep === 2) {
       // Go back to step 1, preserve usernameOrEmail
       setCurrentStep(1)
-      setSelectedQuestionOrder(null)
-      setAnswer('')
+      setCode('')
       setNewPassword('')
       setConfirmPassword('')
       setErrors({})
@@ -357,57 +334,17 @@ function ForgotPassword() {
   const renderStep2 = () => (
     <form onSubmit={handleStep2Submit} className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-neutral-700 mb-3">
-          Select a security question:
-          <span className="text-error-500 ml-1">*</span>
-        </label>
-        <div className="space-y-3">
-          {questions.map((question) => (
-            <label
-              key={question.question_order}
-              className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                selectedQuestionOrder === question.question_order
-                  ? 'border-primary-600 bg-primary-50'
-                  : 'border-neutral-300 hover:border-primary-300'
-              }`}
-            >
-              <input
-                type="radio"
-                name="security_question"
-                value={question.question_order}
-                checked={selectedQuestionOrder === question.question_order}
-                onChange={() => handleQuestionSelect(question.question_order)}
-                disabled={isLoading}
-                className="mt-1 mr-3 w-4 h-4 text-primary-600 border-neutral-300 focus:ring-primary-500"
-              />
-              <div className="flex-1">
-                <span className="text-sm font-medium text-neutral-700">
-                  Question {question.question_order}:
-                </span>
-                <p className="text-sm text-neutral-600 mt-1">
-                  {question.question_text}
-                </p>
-              </div>
-            </label>
-          ))}
-        </div>
-        {errors.selectedQuestion && (
-          <p className="mt-2 text-sm text-error-600">{errors.selectedQuestion}</p>
-        )}
-      </div>
-
-      <div>
         <Input
           type="text"
-          name="answer"
-          label="Your Answer"
-          value={answer}
-          onChange={handleAnswerChange}
-          error={errors.answer}
+          name="code"
+          label="Verification Code"
+          value={code}
+          onChange={handleCodeChange}
+          error={errors.code}
           required
           disabled={isLoading}
-          placeholder="Enter your answer"
-          helperText="Max 100 characters"
+          placeholder="Enter 4-digit code sent to your email"
+          maxLength={4}
         />
       </div>
 
@@ -444,12 +381,11 @@ function ForgotPassword() {
           variant="primary"
           fullWidth
           disabled={
-            !selectedQuestionOrder ||
-            !answer.trim() ||
+            !code.trim() ||
             !newPassword.trim() ||
             !confirmPassword.trim() ||
             isLoading ||
-            !!validateAnswer(answer) ||
+            !!validateCode(code) ||
             !!validatePassword(newPassword) ||
             !!validateConfirmPassword(confirmPassword, newPassword)
           }

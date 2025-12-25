@@ -25,6 +25,10 @@ from .views import (
     ForgotPasswordStep1APIView,
     ForgotPasswordStep2APIView,
     ProfileAPIView,
+    SignupRequestCodeAPIView,
+    SignupVerifyCodeAPIView,
+    PasswordResetRequestCodeAPIView,
+    PasswordResetConfirmAPIView,
 )
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
@@ -52,6 +56,10 @@ urlpatterns = [
     path('products/<uuid:product_id>/reviews/create/', csrf_exempt(ProductReviewCreateAPIView.as_view()), name='product-review-create'),
     # Authentication endpoints
     path('auth/signup/', SignupAPIView.as_view(), name='signup'),
+    path('auth/signup/request-code/', SignupRequestCodeAPIView.as_view(), name='signup-request-code'),
+    path('auth/signup/verify-code/', SignupVerifyCodeAPIView.as_view(), name='signup-verify-code'),
+    path('auth/password-reset/request-code/', PasswordResetRequestCodeAPIView.as_view(), name='password-reset-request-code'),
+    path('auth/password-reset/confirm/', PasswordResetConfirmAPIView.as_view(), name='password-reset-confirm'),
     path('auth/login/', LoginAPIView.as_view(), name='login'),
     path('auth/forgot-password/step1/', ForgotPasswordStep1APIView.as_view(), name='forgot-password-step1'),
     path('auth/forgot-password/step2/', ForgotPasswordStep2APIView.as_view(), name='forgot-password-step2'),

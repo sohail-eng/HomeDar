@@ -107,6 +107,23 @@ class Product(TimeStampedModel):
         self.full_clean()
         super().save(*args, **kwargs)
 
+    def get_discount_percentage(self):
+        """
+        Return discount percentage as integer (e.g. 25 for 25% off) or None.
+
+        Calculated as: ((price - discount_price) / price) * 100
+        Only valid when both price and discount_price are set and discount_price < price.
+        """
+        if not self.price or not self.discount_price:
+            return None
+        try:
+            if self.discount_price >= self.price:
+                return None
+            percentage = (self.price - self.discount_price) / self.price * Decimal("100")
+            return int(round(percentage))
+        except Exception:
+            return None
+
 
 class ProductImage(models.Model):
     """ProductImage model for storing product images."""
@@ -585,6 +602,84 @@ class SecurityQuestion(TimeStampedModel):
         # If answer_hash is provided directly and not hashed, we can't detect it
         # So it's better to always use set_answer() method
         super().save(*args, **kwargs)
+
+
+class EmailOTP(TimeStampedModel):
+    """
+    One-time 4-digit email code for signup and password reset.
+    
+    - Codes are short-lived and single-use.
+    - Each record is scoped by (email, purpose).
+    - After 3 invalid attempts, the code is invalidated.
+    """
+
+    PURPOSE_SIGNUP = "signup"
+    PURPOSE_PASSWORD_RESET = "password_reset"
+    PURPOSE_CHOICES = [
+        (PURPOSE_SIGNUP, "Signup"),
+        (PURPOSE_PASSWORD_RESET, "Password Reset"),
+    ]
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    email = models.EmailField(
+        db_index=True,
+        help_text="Email address this OTP was sent to.",
+    )
+    code = models.CharField(
+        max_length=4,
+        help_text="4-digit verification code.",
+    )
+    purpose = models.CharField(
+        max_length=32,
+        choices=PURPOSE_CHOICES,
+        help_text="Purpose of this OTP (signup or password reset).",
+    )
+    expires_at = models.DateTimeField(
+        help_text="When this code expires and becomes invalid.",
+    )
+    attempt_count = models.IntegerField(
+        default=0,
+        help_text="Number of invalid attempts made with this code.",
+    )
+    max_attempts = models.IntegerField(
+        default=3,
+        help_text="Maximum allowed invalid attempts before code is locked.",
+    )
+    used = models.BooleanField(
+        default=False,
+        help_text="Whether this code has already been successfully used.",
+    )
+
+    class Meta:
+        verbose_name = "Email OTP"
+        verbose_name_plural = "Email OTPs"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["email", "purpose", "expires_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"OTP for {self.email} ({self.purpose})"
+
+    @property
+    def is_expired(self) -> bool:
+        from django.utils import timezone
+
+        return self.expires_at <= timezone.now()
+
+    @property
+    def is_locked(self) -> bool:
+        return self.attempt_count >= self.max_attempts
+
+    def can_use(self) -> bool:
+        """
+        Return True if this code can still be used (not used, not expired, not locked).
+        """
+        return not self.used and not self.is_expired and not self.is_locked
 
 
 @receiver(post_save, sender=ProductImage)

@@ -6,7 +6,7 @@ import { useBrowserLocation } from '../../hooks/useBrowserLocation'
 import { useAuth } from '../../contexts/AuthContext'
 import LocationPermissionBanner from './LocationPermissionBanner'
 
-function RecentlyViewed({ onProductClick }) {
+function RecentlyViewed({ onProductClick, wholesaleOnly = false }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const { isAuthenticated } = useAuth()
@@ -31,7 +31,7 @@ function RecentlyViewed({ onProductClick }) {
     return () => {
       mounted = false
     }
-  }, [locationStatus])
+  }, [locationStatus, wholesaleOnly])
 
   // Show banner if location is not granted (denied, idle, or requesting)
   if (locationStatus === 'denied' || locationStatus === 'idle' || locationStatus === 'requesting') {
@@ -113,6 +113,13 @@ function RecentlyViewed({ onProductClick }) {
             subtitle={getPriceDisplay(product)}
             image={getMainImageUrl(product)}
             imageAlt={product.title}
+            imageBadge={
+              product.discount_percentage ? (
+                <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow">
+                  {product.discount_percentage}% OFF
+                </span>
+              ) : null
+            }
             hover
             onClick={() => onProductClick && onProductClick(product.id)}
           />
@@ -124,6 +131,7 @@ function RecentlyViewed({ onProductClick }) {
 
 RecentlyViewed.propTypes = {
   onProductClick: PropTypes.func,
+  wholesaleOnly: PropTypes.bool,
 }
 
 export default RecentlyViewed

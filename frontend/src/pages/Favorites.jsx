@@ -160,6 +160,14 @@ function Favorites() {
         </div>
       </div>
 
+      {/* Login Banner for Wholesale Prices */}
+      {!isAuthenticated && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+          <span className="font-semibold">Login required:</span>{' '}
+          Login to view the discount prices of the products.
+        </div>
+      )}
+
       {/* Products Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         {products.map((product) => (
@@ -169,14 +177,22 @@ function Favorites() {
             subtitle={`SKU: ${product.sku}`}
             image={getMainImageUrl(product)}
             imageAlt={product.title}
+            imageBadge={
+              product.discount_percentage ? (
+                <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow">
+                  {product.discount_percentage}% OFF
+                </span>
+              ) : null
+            }
             onClick={() => handleProductClick(product.id)}
             hover={true}
             className="h-full"
           >
             <div className="mt-2">
-              {/* Price Display */}
-              {isAuthenticated && product.discount_price ? (
-                <div>
+              <div>
+                {/* Price Display */}
+                {isAuthenticated && product.discount_price ? (
+
                   <div className="flex items-baseline gap-2">
                     <p className="text-xl font-bold text-primary-600">
                       {formatPrice(product.discount_price)}
@@ -185,15 +201,15 @@ function Favorites() {
                       {formatPrice(product.price)}
                     </p>
                   </div>
-                  <p className="text-xs text-success-600 font-medium mt-1">
-                    Wholesale Price
+                ) : (
+                  <p className="text-xl font-bold text-primary-600">
+                    {formatPrice(product.price)}
                   </p>
-                </div>
-              ) : (
-                <p className="text-xl font-bold text-primary-600">
-                  {formatPrice(product.price)}
-                </p>
-              )}
+                )}
+                {product.discount_percentage ? (<p className="text-xs text-red-600 font-medium mt-1">
+                  Wholesale Price
+                </p>) : (null)}
+              </div>
               {product.description && (
                 <p className="text-sm text-neutral-600 mt-1 line-clamp-2">
                   {product.description}

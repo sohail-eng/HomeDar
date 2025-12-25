@@ -50,10 +50,19 @@ export const getRecentProducts = async (limit = 10) => {
   try {
     // Ensure visitor_id exists and pass it explicitly as query parameter
     const visitorId = getOrCreateVisitorId()
+    let wholesaleOnly = false
+    try {
+      const stored = window.localStorage.getItem('wholesale_only')
+      wholesaleOnly = stored === 'true'
+    } catch {
+      wholesaleOnly = false
+    }
+
     const response = await api.get('/tracking/recent-products/', {
       params: { 
         limit,
         visitor_id: visitorId,
+        wholesale_only: wholesaleOnly ? 'true' : undefined,
       },
     })
     return {
@@ -77,8 +86,17 @@ export const getRecentProducts = async (limit = 10) => {
 export const getPopularProducts = async (options = {}) => {
   try {
     const visitorId = getOrCreateVisitorId()
+    let wholesaleOnly = false
+    try {
+      const stored = window.localStorage.getItem('wholesale_only')
+      wholesaleOnly = stored === 'true'
+    } catch {
+      wholesaleOnly = false
+    }
+
     const params = {
       visitor_id: visitorId,
+      wholesale_only: wholesaleOnly ? 'true' : undefined,
     }
     if (options.country) params.country = options.country
     if (options.period) params.period = options.period
@@ -122,8 +140,17 @@ export const getAlsoViewedProducts = async (productId, options = {}) => {
     }
 
     const visitorId = getOrCreateVisitorId()
+    let wholesaleOnly = false
+    try {
+      const stored = window.localStorage.getItem('wholesale_only')
+      wholesaleOnly = stored === 'true'
+    } catch {
+      wholesaleOnly = false
+    }
+
     const params = {
       visitor_id: visitorId,
+      wholesale_only: wholesaleOnly ? 'true' : undefined,
     }
     if (options.limit) params.limit = options.limit
     if (options.period) params.period = options.period

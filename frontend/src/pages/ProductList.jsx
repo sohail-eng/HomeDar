@@ -70,6 +70,15 @@ function ProductList() {
   const searchInputRef = useRef(null)
   const searchContainerRef = useRef(null)
   const categoryButtonRefs = useRef({})
+  const [wholesaleOnly, setWholesaleOnly] = useState(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      const stored = window.localStorage.getItem('wholesale_only')
+      return stored === 'true'
+    } catch {
+      return false
+    }
+  })
   
   const [localFilters, setLocalFilters] = useState({
     sku: '',
@@ -143,8 +152,8 @@ function ProductList() {
         created_at_before: '',
         ordering: '-created_at',
       })
-      // Fetch with empty filters object
-      fetchProducts(1, {})
+      // Initial fetch respects persisted wholesaleOnly flag
+      fetchProducts(1, wholesaleOnly ? { wholesale_only: 'true' } : {})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -164,6 +173,7 @@ function ProductList() {
       created_at_before: localFilters.created_at_before || '',
       ordering: localFilters.ordering || '-created_at',
       subcategories: filters.subcategories.join(','),
+      wholesaleOnly,
     })
     
     // Only proceed if filters actually changed
@@ -187,8 +197,9 @@ function ProductList() {
         max_price: localFilters.maxPrice?.trim() || undefined,
         created_at_after: localFilters.created_at_after?.trim() || undefined,
         created_at_before: localFilters.created_at_before?.trim() || undefined,
-        ordering: localFilters.ordering || '-created_at',
+          ordering: localFilters.ordering || '-created_at',
         subcategories: filters.subcategories.length > 0 ? filters.subcategories.join(',') : undefined,
+          wholesale_only: wholesaleOnly ? 'true' : undefined,
       }
       
       // Clean undefined, null, and empty string values
@@ -218,6 +229,7 @@ function ProductList() {
     localFilters.created_at_before,
     localFilters.ordering,
     filters.subcategories,
+    wholesaleOnly,
     // Removed fetchProducts and updateProductFilters from dependencies
     // to prevent infinite loops
   ])
@@ -444,7 +456,7 @@ function ProductList() {
           </div>
           
           {/* Desktop: Filters row with search */}
-          <div className="hidden lg:flex gap-2 items-center">
+          <div className="hidden lg:flex gap-3 items-center">
             {/* Price Range */}
             <div className="flex gap-2 items-center">
               <Input
@@ -469,6 +481,31 @@ function ProductList() {
                 fullWidth={false}
                 className="w-24"
               />
+            </div>
+            
+            {/* Wholesale Only Toggle */}
+            <div className="flex items-center gap-1">
+              <input
+                id="wholesale-only-desktop"
+                type="checkbox"
+                checked={wholesaleOnly}
+                onChange={(e) => {
+                  const value = e.target.checked
+                  setWholesaleOnly(value)
+                  try {
+                    window.localStorage.setItem('wholesale_only', value ? 'true' : 'false')
+                  } catch {
+                    // ignore storage errors
+                  }
+                }}
+                className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500 cursor-pointer"
+              />
+              <label
+                htmlFor="wholesale-only-desktop"
+                className="text-sm text-neutral-700 cursor-pointer select-none"
+              >
+                Wholesale only
+              </label>
             </div>
             
             {/* Sort By Dropdown */}
@@ -537,7 +574,7 @@ function ProductList() {
           </div>
         </div>
         
-        {/* Mobile/Tablet: Min, Max, Sort on same line */}
+        {/* Mobile/Tablet: Min, Max, Sort on first line; Wholesale on second line */}
         <div className="flex flex-wrap lg:hidden gap-2 items-center w-full">
           {/* Price Range */}
           <div className="flex gap-2 items-center">
@@ -593,6 +630,31 @@ function ProductList() {
               Reset
             </Button>
           )}
+
+          {/* Wholesale Only Toggle - full width row on small screens, below other controls */}
+          <div className="flex items-center gap-1 w-full mt-1.5">
+            <input
+              id="wholesale-only-mobile"
+              type="checkbox"
+              checked={wholesaleOnly}
+              onChange={(e) => {
+                const value = e.target.checked
+                setWholesaleOnly(value)
+                try {
+                  window.localStorage.setItem('wholesale_only', value ? 'true' : 'false')
+                } catch {
+                  // ignore storage errors
+                }
+              }}
+              className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500 cursor-pointer"
+            />
+            <label
+              htmlFor="wholesale-only-mobile"
+              className="text-sm text-neutral-700 cursor-pointer select-none"
+            >
+              Wholesale only
+            </label>
+          </div>
         </div>
       </div>
       
@@ -677,6 +739,14 @@ function ProductList() {
         </div>
       )}
       
+      {/* Login Banner for Wholesale Prices */}
+      {!isAuthenticated && (
+        <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+          <span className="font-semibold">Login required:</span>{' '}
+          Login to view the discount prices of the products.
+        </div>
+      )}
+
       {/* Error Message */}
       {error && (
         <ErrorMessage message={error} onDismiss={() => {}} />
@@ -705,14 +775,21 @@ function ProductList() {
                 subtitle={`SKU: ${product.sku}`}
                 image={getMainImageUrl(product)}
                 imageAlt={product.title}
+                imageBadge={
+                  product.discount_percentage ? (
+                    <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow">
+                      {product.discount_percentage}% OFF
+                    </span>
+                  ) : null
+                }
                 onClick={() => handleProductClick(product.id)}
                 hover={true}
                 className="h-full"
               >
                 <div className="mt-2">
                   {/* Price Display */}
-                  {isAuthenticated && product.discount_price ? (
-                    <div>
+                  <div>
+                    {isAuthenticated && product.discount_price ? (
                       <div className="flex items-baseline gap-2">
                         <p className="text-xl font-bold text-primary-600">
                           ${parseFloat(product.discount_price).toFixed(2)}
@@ -721,15 +798,17 @@ function ProductList() {
                           ${parseFloat(product.price).toFixed(2)}
                         </p>
                       </div>
-                      <p className="text-xs text-success-600 font-medium mt-1">
+                    ) : (
+                      <p className="text-xl font-bold text-primary-600">
+                        ${parseFloat(product.price).toFixed(2)}
+                      </p>
+                    )}
+                    {product.discount_percentage ? (
+                      <p className="text-xs text-red-600 font-medium mt-1">
                         Wholesale Price
                       </p>
-                    </div>
-                  ) : (
-                    <p className="text-xl font-bold text-primary-600">
-                      ${parseFloat(product.price).toFixed(2)}
-                    </p>
-                  )}
+                    ) : null}
+                  </div>
                   {product.description && (
                     <p className="text-sm text-neutral-600 mt-1 line-clamp-2">
                       {product.description}
@@ -765,7 +844,10 @@ function ProductList() {
             </div>
 
             <div className="space-y-10">
-              <RecentlyViewed onProductClick={handleProductClick} />
+              <RecentlyViewed 
+                onProductClick={handleProductClick} 
+                wholesaleOnly={wholesaleOnly}
+              />
 
               {/* Decorative separator between Recently Viewed and Popular sections */}
               <div className="relative">
@@ -775,7 +857,10 @@ function ProductList() {
                 </div>
               </div>
 
-              <PopularInYourArea onProductClick={handleProductClick} />
+              <PopularInYourArea 
+                onProductClick={handleProductClick} 
+                wholesaleOnly={wholesaleOnly}
+              />
             </div>
           </div>
         </>

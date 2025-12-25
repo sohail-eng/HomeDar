@@ -9,6 +9,7 @@ function Card({
   subtitle,
   image,
   imageAlt,
+  imageBadge,
   onClick,
   className = '',
   hover = false,
@@ -33,7 +34,7 @@ function Card({
       {...props}
     >
       {image && (
-        <div className="w-full h-56 sm:h-48 md:h-40 bg-neutral-200 overflow-hidden">
+        <div className="relative w-full h-56 sm:h-48 md:h-40 bg-neutral-200 overflow-hidden">
           <img
             src={image}
             alt={imageAlt || title || 'Card image'}
@@ -42,6 +43,11 @@ function Card({
               e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23e5e5e5" width="400" height="300"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E'
             }}
           />
+          {imageBadge && (
+            <div className="absolute top-2 left-2 z-10">
+              {imageBadge}
+            </div>
+          )}
         </div>
       )}
       {(title || subtitle || children) && (
@@ -65,6 +71,7 @@ Card.propTypes = {
   subtitle: PropTypes.string,
   image: PropTypes.string,
   imageAlt: PropTypes.string,
+  imageBadge: PropTypes.node,
   onClick: PropTypes.func,
   className: PropTypes.string,
   hover: PropTypes.bool,

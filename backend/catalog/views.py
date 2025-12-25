@@ -15,6 +15,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
+from django.conf import settings
+from django.core.mail import send_mail
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +38,14 @@ from .serializers import (
     UserProfileSerializer,
     ForgotPasswordStep1Serializer,
     ForgotPasswordStep2Serializer,
+    SignupRequestCodeSerializer,
+    SignupVerifyCodeSerializer,
+    PasswordResetRequestCodeSerializer,
+    PasswordResetConfirmSerializer,
 )
 from .utils.jwt import get_tokens_for_user
 from .utils.auth import CustomJWTAuthentication
+from .utils.otp import create_or_refresh_otp, validate_otp
 from rest_framework.permissions import IsAuthenticated
 from .utils.geo import get_client_ip, ensure_visitor_profile_for_request
 from .throttles import LoginRateThrottle, SignupRateThrottle, ForgotPasswordRateThrottle
@@ -108,6 +115,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         - created_at_after, created_at_before: date range
         - updated_at_after, updated_at_before: date range
         - subcategories: filter by subcategory IDs (comma-separated)
+        - wholesale_only: if true, only return products with a valid discount_price
         - ordering: supports likes_count for ordering by favorite count
         """
         queryset = super().get_queryset()
@@ -162,6 +170,13 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         if subcategories:
             subcategory_ids = [id.strip() for id in subcategories.split(',')]
             queryset = queryset.filter(subcategories__id__in=subcategory_ids).distinct()
+
+        # Filter by wholesale_only: only products that have a valid discount/wholesale price
+        wholesale_only = self.request.query_params.get('wholesale_only', None)
+        if isinstance(wholesale_only, str):
+            wholesale_only_normalized = wholesale_only.strip().lower()
+            if wholesale_only_normalized in ('1', 'true', 'yes'):
+                queryset = queryset.filter(discount_price__isnull=False)
         
         return queryset
 
@@ -398,6 +413,11 @@ class RecentProductsAPIView(APIView):
             if len(products) >= limit:
                 break
 
+        # Optional wholesale-only filter: only include products with a valid discount price
+        wholesale_only = request.query_params.get("wholesale_only")
+        if isinstance(wholesale_only, str) and wholesale_only.strip().lower() in ("1", "true", "yes"):
+            products = [p for p in products if getattr(p, "discount_price", None)]
+
         serializer = RecentProductSerializer(
             products,
             many=True,
@@ -491,6 +511,11 @@ class PopularProductsAPIView(APIView):
 
         product_ids = [item["product"] for item in product_last_views]
         products = list(Product.objects.filter(id__in=product_ids).prefetch_related("images"))
+
+        # Optional wholesale-only filter: only include products with a valid discount price
+        wholesale_only = request.query_params.get("wholesale_only")
+        if isinstance(wholesale_only, str) and wholesale_only.strip().lower() in ("1", "true", "yes"):
+            products = [p for p in products if getattr(p, "discount_price", None)]
 
         # Preserve the order defined by product_counts.
         products_by_id = {p.id: p for p in products}
@@ -621,6 +646,11 @@ class AlsoViewedProductsAPIView(APIView):
         products = list(
             Product.objects.filter(id__in=product_ids).prefetch_related("images")
         )
+
+        # Optional wholesale-only filter: only include products with a valid discount price
+        wholesale_only = request.query_params.get("wholesale_only")
+        if isinstance(wholesale_only, str) and wholesale_only.strip().lower() in ("1", "true", "yes"):
+            products = [p for p in products if getattr(p, "discount_price", None)]
 
         # Preserve the order defined by the aggregation
         products_by_id = {p.id: p for p in products}
@@ -780,7 +810,9 @@ class FavoriteProductsAPIView(APIView):
     - Returns empty list if visitor not found or no likes
     """
     
-    authentication_classes = []
+    # Allow optional authentication so discount prices can be shown
+    # for authenticated users while still supporting anonymous visitors.
+    authentication_classes = [CustomJWTAuthentication]
     default_limit = 50
     
     def get(self, request, *args, **kwargs):
@@ -967,7 +999,28 @@ class ProductReviewCreateAPIView(APIView):
 # Authentication Views
 # ============================================================================
 
-class SignupAPIView(APIView):
+
+class AuthThrottledAPIView(APIView):
+    """
+    Base class for authentication-related API views that should be
+    subject to custom rate limiting.
+
+    - Only auth endpoints inherit from this class.
+    - All non-auth views continue to inherit from DRF generics/APIView directly
+      and are *not* throttled now that global throttles are disabled.
+    - In the future, throttling behavior for all auth endpoints can be
+      adjusted in one place by changing this base class.
+    """
+
+    authentication_classes = []
+    permission_classes = []
+    # NOTE: We intentionally do not set throttle_classes here so each auth
+    # endpoint can choose the appropriate custom throttle (login, signup,
+    # forgot password). To globally disable throttling for auth, either set
+    # throttle_classes = [] here or remove throttle_classes from child views.
+
+
+class SignupAPIView(AuthThrottledAPIView):
     """
     User signup endpoint.
     
@@ -1087,7 +1140,180 @@ class SignupAPIView(APIView):
             )
 
 
-class LoginAPIView(APIView):
+class SignupRequestCodeAPIView(AuthThrottledAPIView):
+    """
+    Request a 4-digit email code for signup.
+
+    POST /api/auth/signup/request-code/
+    """
+
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [SignupRateThrottle]
+
+    @method_decorator(csrf_exempt, name="dispatch")
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+
+        serializer = SignupRequestCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+
+        # Create or refresh OTP for signup
+        otp = create_or_refresh_otp(email=email, purpose="signup", ttl_minutes=10)
+
+        # Send code via email (simple text email)
+        subject = "Your HomeDar signup code"
+        message = (
+            f"Your verification code is {otp.code}. "
+            f"It will expire in 10 minutes. "
+            f"Please do not share this code with anyone."
+        )
+        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+
+        try:
+            send_mail(
+                subject,
+                message,
+                from_email,
+                [email],
+                fail_silently=False,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send signup OTP email to {email}: {e}", exc_info=True)
+            return Response(
+                {
+                    "code": "email_send_failed",
+                    "detail": "We couldn't send the verification code. Please try again.",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "message": "We have sent a 4-digit verification code to your email address.",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class SignupVerifyCodeAPIView(AuthThrottledAPIView):
+    """
+    Verify a signup OTP code and create the user.
+
+    POST /api/auth/signup/verify-code/
+    """
+
+    authentication_classes = []
+    permission_classes = []
+
+    @method_decorator(csrf_exempt, name="dispatch")
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        try:
+            serializer = SignupVerifyCodeSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            email = serializer.validated_data["email"]
+            code = serializer.validated_data["code"]
+
+            # Validate OTP
+            result = validate_otp(email=email, purpose="signup", code=code)
+            if not result.valid:
+                status_code = status.HTTP_400_BAD_REQUEST
+                if result.error_code == "too_many_attempts":
+                    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+                elif result.error_code == "code_expired":
+                    status_code = status.HTTP_400_BAD_REQUEST
+
+                return Response(
+                    {
+                        "code": result.error_code,
+                        "detail": result.message,
+                    },
+                    status=status_code,
+                )
+
+            # Create user
+            user = User.objects.create(
+                first_name=serializer.validated_data["first_name"],
+                last_name=serializer.validated_data["last_name"],
+                username=serializer.validated_data["username"],
+                email=email.strip().lower(),
+            )
+            user.set_password(serializer.validated_data["password"])
+            user.save()
+
+            # Link visitor_id if provided (reuse existing logic)
+            visitor = None
+            visitor_id = serializer.validated_data.get("visitor_id")
+            new_visitor_id = None
+
+            if visitor_id:
+                try:
+                    visitor = VisitorProfile.objects.get(visitor_id=visitor_id)
+                except VisitorProfile.DoesNotExist:
+                    visitor = None
+
+            if visitor:
+                existing_user = User.objects.filter(visitor=visitor).first()
+                if existing_user and existing_user.id != user.id:
+                    import uuid
+                    from .utils.geo import ensure_visitor_profile_for_request
+
+                    new_visitor_id = str(uuid.uuid4())
+                    new_visitor = ensure_visitor_profile_for_request(request, new_visitor_id)
+                    if new_visitor:
+                        user.visitor = new_visitor
+                        user.save()
+                else:
+                    user.visitor = visitor
+                    user.save()
+                    new_visitor_id = visitor.visitor_id
+            else:
+                import uuid
+                from .utils.geo import ensure_visitor_profile_for_request
+
+                new_visitor_id = str(uuid.uuid4())
+                new_visitor = ensure_visitor_profile_for_request(request, new_visitor_id)
+                if new_visitor:
+                    user.visitor = new_visitor
+                    user.save()
+
+            if not new_visitor_id and user.visitor:
+                new_visitor_id = user.visitor.visitor_id
+
+            # Generate JWT tokens
+            tokens = get_tokens_for_user(user)
+
+            # Serialize user data
+            user_serializer = UserProfileSerializer(user, context={"request": request})
+
+            return Response(
+                {
+                    "user": user_serializer.data,
+                    "access": tokens["access"],
+                    "refresh": tokens["refresh"],
+                    "visitor_id": new_visitor_id,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        except serializers.ValidationError:
+            raise
+        except Exception as e:
+            logger.error(f"Signup OTP verify error: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "An error occurred during signup. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class LoginAPIView(AuthThrottledAPIView):
     """
     User login endpoint.
     
@@ -1152,7 +1378,7 @@ class LoginAPIView(APIView):
             )
 
 
-class ForgotPasswordStep1APIView(APIView):
+class ForgotPasswordStep1APIView(AuthThrottledAPIView):
     """
     Forgot password step 1: Get security questions.
     
@@ -1209,7 +1435,7 @@ class ForgotPasswordStep1APIView(APIView):
             )
 
 
-class ForgotPasswordStep2APIView(APIView):
+class ForgotPasswordStep2APIView(AuthThrottledAPIView):
     """
     Forgot password step 2: Verify answer and reset password.
     
@@ -1278,6 +1504,137 @@ class ForgotPasswordStep2APIView(APIView):
             return Response(
                 {'error': 'An error occurred. Please try again.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class PasswordResetRequestCodeAPIView(AuthThrottledAPIView):
+    """
+    Request a 4-digit email code for password reset.
+
+    POST /api/auth/password-reset/request-code/
+    """
+
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [ForgotPasswordRateThrottle]
+
+    @method_decorator(csrf_exempt, name="dispatch")
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        from django.conf import settings
+        from django.core.mail import send_mail
+
+        serializer = PasswordResetRequestCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        username_or_email = serializer.validated_data.get("username_or_email")
+        user = serializer.context.get("user")
+
+        # Log the request with the resolved email
+        logger.info(
+            f"Password reset code requested for email={user.email} "
+            f"(username_or_email={username_or_email})"
+        )
+
+        email = user.email
+
+        otp = create_or_refresh_otp(email=email, purpose="password_reset", ttl_minutes=10)
+
+        subject = "Your HomeDar password reset code"
+        message = (
+            f"Your password reset code is {otp.code}. "
+            f"It will expire in 10 minutes. "
+            f"If you did not request this, you can ignore this email."
+        )
+        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+
+        try:
+            send_mail(
+                subject,
+                message,
+                from_email,
+                [email],
+                fail_silently=False,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send password reset OTP email to {email}: {e}", exc_info=True)
+            # Still return generic success to avoid leaking details
+            return Response(
+                {
+                    "message": "If an account exists for this email or username, we have sent a 4-digit code.",
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(
+            {
+                "message": "If an account exists for this email or username, we have sent a 4-digit code.",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordResetConfirmAPIView(AuthThrottledAPIView):
+    """
+    Confirm password reset with a 4-digit code and new password.
+
+    POST /api/auth/password-reset/confirm/
+    """
+
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [ForgotPasswordRateThrottle]
+
+    @method_decorator(csrf_exempt, name="dispatch")
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        try:
+            serializer = PasswordResetConfirmSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            user = serializer.validated_data["user"]
+            code = serializer.validated_data["code"]
+
+            # Validate OTP using the user's email
+            result = validate_otp(email=user.email, purpose="password_reset", code=code)
+            if not result.valid:
+                status_code = status.HTTP_400_BAD_REQUEST
+                if result.error_code == "too_many_attempts":
+                    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+                elif result.error_code == "code_expired":
+                    status_code = status.HTTP_400_BAD_REQUEST
+
+                return Response(
+                    {
+                        "code": result.error_code,
+                        "detail": result.message,
+                    },
+                    status=status_code,
+                )
+
+            # OTP is valid; reset password
+            new_password = serializer.validated_data["password"]
+            user.set_password(new_password)
+            user.save()
+
+            return Response(
+                {
+                    "message": "Password has been reset successfully. You can now login with your new password.",
+                    "success": True,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except serializers.ValidationError:
+            raise
+        except Exception as e:
+            logger.error(f"Password reset confirm error: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "An error occurred. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 

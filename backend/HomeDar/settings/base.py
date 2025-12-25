@@ -153,10 +153,10 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
-    ],
+    # Global throttling is disabled so only explicit auth endpoints
+    # use custom throttles (LoginRateThrottle, SignupRateThrottle,
+    # ForgotPasswordRateThrottle, etc.).
+    'DEFAULT_THROTTLE_CLASSES': [],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/hour',  # Default anonymous rate limit
         'user': '1000/hour',  # Default authenticated user rate limit
