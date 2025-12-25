@@ -20,7 +20,7 @@ from django.core.mail import send_mail
 
 logger = logging.getLogger(__name__)
 
-from .models import Category, SubCategory, Product, ProductImage, ContactUs, ProductView, ProductLike, ProductReview, User, SecurityQuestion, VisitorProfile
+from .models import Category, SubCategory, Product, ProductImage, ContactUs, ProductView, ProductLike, ProductReview, User, VisitorProfile
 from .serializers import (
     CategorySerializer,
     SubCategorySerializer,
@@ -36,8 +36,6 @@ from .serializers import (
     UserSignupSerializer,
     UserLoginSerializer,
     UserProfileSerializer,
-    ForgotPasswordStep1Serializer,
-    ForgotPasswordStep2Serializer,
     SignupRequestCodeSerializer,
     SignupVerifyCodeSerializer,
     PasswordResetRequestCodeSerializer,
@@ -1020,126 +1018,6 @@ class AuthThrottledAPIView(APIView):
     # throttle_classes = [] here or remove throttle_classes from child views.
 
 
-class SignupAPIView(AuthThrottledAPIView):
-    """
-    User signup endpoint.
-    
-    POST /api/auth/signup/
-    
-    Accepts:
-    - first_name, last_name, username, email, password
-    - visitor_id (optional)
-    - security_questions (array of 3)
-    
-    Returns:
-    - user data
-    - access token
-    - refresh token
-    """
-    
-    authentication_classes = []
-    permission_classes = []
-    throttle_classes = [SignupRateThrottle]
-    
-    @method_decorator(csrf_exempt, name="dispatch")
-    def dispatch(self, *args, **kwargs):
-        return super().dispatch(*args, **kwargs)
-    
-    def post(self, request, *args, **kwargs):
-        try:
-            serializer = UserSignupSerializer(data=request.data, context={'request': request})
-            if not serializer.is_valid():
-                return Response(
-                    serializer.errors,
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            
-            # Create user
-            user = User.objects.create(
-                first_name=serializer.validated_data['first_name'],
-                last_name=serializer.validated_data['last_name'],
-                username=serializer.validated_data['username'],
-                email=serializer.validated_data['email'],
-            )
-            # Password is hashed via set_password (Task 3.1)
-            user.set_password(serializer.validated_data['password'])
-            user.save()
-            
-            # Link visitor_id if provided (Task 3.3)
-            visitor = serializer.context.get('visitor')
-            new_visitor_id = None
-            
-            if visitor:
-                # Check if visitor is already linked to another user
-                existing_user = User.objects.filter(visitor=visitor).first()
-                if existing_user and existing_user.id != user.id:
-                    # Create a new visitor_id for the new user
-                    import uuid
-                    from .utils.geo import ensure_visitor_profile_for_request
-                    
-                    new_visitor_id = str(uuid.uuid4())
-                    
-                    # Create new visitor profile
-                    new_visitor = ensure_visitor_profile_for_request(request, new_visitor_id)
-                    if new_visitor:
-                        user.visitor = new_visitor
-                        user.save()
-                    else:
-                        logger.error(f"Failed to create new visitor profile for {new_visitor_id}")
-                else:
-                    # Visitor not linked to another user, use it
-                    user.visitor = visitor
-                    user.save()
-                    new_visitor_id = visitor.visitor_id
-            else:
-                # No visitor_id provided, create a new one
-                import uuid
-                from .utils.geo import ensure_visitor_profile_for_request
-                
-                new_visitor_id = str(uuid.uuid4())
-                new_visitor = ensure_visitor_profile_for_request(request, new_visitor_id)
-                if new_visitor:
-                    user.visitor = new_visitor
-                    user.save()
-            
-            # Store new_visitor_id for response
-            if not new_visitor_id and user.visitor:
-                new_visitor_id = user.visitor.visitor_id
-            
-            # Create security questions (Task 3.2: answers are hashed via set_answer)
-            for sq_data in serializer.validated_data['security_questions']:
-                security_question = SecurityQuestion.objects.create(
-                    user=user,
-                    question_text=sq_data['question_text'],
-                    question_order=sq_data['question_order'],
-                )
-                # Answer is hashed and normalized via set_answer
-                security_question.set_answer(sq_data['answer'])
-                security_question.save()
-            
-            # Generate JWT tokens
-            tokens = get_tokens_for_user(user)
-            
-            # Serialize user data
-            user_serializer = UserProfileSerializer(user, context={'request': request})
-            
-            return Response({
-                'user': user_serializer.data,
-                'access': tokens['access'],
-                'refresh': tokens['refresh'],
-                'visitor_id': new_visitor_id,  # Return the visitor_id to save in localStorage
-            }, status=status.HTTP_201_CREATED)
-            
-        except Exception as e:
-            # Log detailed error server-side
-            logger.error(f"Signup error: {str(e)}", exc_info=True)
-            # Return generic error message to frontend
-            return Response(
-                {'error': 'An error occurred during signup. Please try again.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
 class SignupRequestCodeAPIView(AuthThrottledAPIView):
     """
     Request a 4-digit email code for signup.
@@ -1216,7 +1094,15 @@ class SignupVerifyCodeAPIView(AuthThrottledAPIView):
 
     def post(self, request, *args, **kwargs):
         try:
-            serializer = SignupVerifyCodeSerializer(data=request.data)
+            # Handle both JSON and multipart/form-data (for file uploads)
+            data = request.data.copy()
+            files = request.FILES.copy() if hasattr(request, 'FILES') else {}
+            
+            # Merge files into data for serializer
+            if 'llc_certificate' in files:
+                data['llc_certificate'] = files['llc_certificate']
+            
+            serializer = SignupVerifyCodeSerializer(data=data)
             serializer.is_valid(raise_exception=True)
 
             email = serializer.validated_data["email"]
@@ -1239,13 +1125,24 @@ class SignupVerifyCodeAPIView(AuthThrottledAPIView):
                     status=status_code,
                 )
 
-            # Create user
+            # Create user with business fields
             user = User.objects.create(
                 first_name=serializer.validated_data["first_name"],
                 last_name=serializer.validated_data["last_name"],
                 username=serializer.validated_data["username"],
                 email=email.strip().lower(),
+                business_type=serializer.validated_data["business_type"],
+                ein_number=serializer.validated_data.get("ein_number") or None,
             )
+            
+            # Handle file upload if present
+            if 'llc_certificate' in serializer.validated_data and serializer.validated_data['llc_certificate']:
+                file_obj = serializer.validated_data['llc_certificate']
+                user.llc_certificate = file_obj
+                # Store the original filename
+                if hasattr(file_obj, 'name'):
+                    user.llc_certificate_name = file_obj.name
+            
             user.set_password(serializer.validated_data["password"])
             user.save()
 
@@ -1374,135 +1271,6 @@ class LoginAPIView(AuthThrottledAPIView):
             # Return generic error message to frontend
             return Response(
                 {'error': 'An error occurred during login. Please try again.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
-class ForgotPasswordStep1APIView(AuthThrottledAPIView):
-    """
-    Forgot password step 1: Get security questions.
-    
-    POST /api/auth/forgot-password/step1/
-    
-    Accepts:
-    - username_or_email (can be either username or email)
-    
-    Returns:
-    - questions (array of 3 security questions)
-    """
-    
-    authentication_classes = []
-    permission_classes = []
-    throttle_classes = [ForgotPasswordRateThrottle]
-    
-    @method_decorator(csrf_exempt, name="dispatch")
-    def dispatch(self, *args, **kwargs):
-        return super().dispatch(*args, **kwargs)
-    
-    def post(self, request, *args, **kwargs):
-        try:
-            serializer = ForgotPasswordStep1Serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            
-            user = serializer.context['user']
-            
-            # Get all security questions for this user
-            security_questions = SecurityQuestion.objects.filter(user=user).order_by('question_order')
-            
-            questions_data = [
-                {
-                    'question_order': sq.question_order,
-                    'question_text': sq.question_text,
-                }
-                for sq in security_questions
-            ]
-            
-            return Response({
-                'questions': questions_data,
-            }, status=status.HTTP_200_OK)
-            
-        except serializers.ValidationError as e:
-            # Log failed password reset attempt
-            email = request.data.get('email', 'unknown')
-            logger.warning(f"Password reset step 1 failed for email: {email}")
-            raise
-        except Exception as e:
-            # Log detailed error server-side
-            logger.error(f"Password reset step 1 error: {str(e)}", exc_info=True)
-            return Response(
-                {'error': 'An error occurred. Please try again.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
-class ForgotPasswordStep2APIView(AuthThrottledAPIView):
-    """
-    Forgot password step 2: Verify answer and reset password.
-    
-    POST /api/auth/forgot-password/step2/
-    
-    Accepts:
-    - username_or_email (required) - can be either username or email
-    - question_order (required, integer: 1, 2, or 3)
-    - answer (required, string)
-    - password (required, string) - new password to set
-    
-    Returns:
-    - success message if password is reset successfully
-    """
-    
-    authentication_classes = []
-    permission_classes = []
-    throttle_classes = [ForgotPasswordRateThrottle]
-    
-    @method_decorator(csrf_exempt, name="dispatch")
-    def dispatch(self, *args, **kwargs):
-        return super().dispatch(*args, **kwargs)
-    
-    def post(self, request, *args, **kwargs):
-        try:
-            serializer = ForgotPasswordStep2Serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            
-            user = serializer.validated_data['user']
-            security_question = serializer.validated_data['security_question']
-            answer = serializer.validated_data['answer']
-            new_password = serializer.validated_data['password']
-            
-            # Verify answer (Task 3.2: uses check_password for hashed answer verification)
-            if not security_question.check_answer(answer):
-                # Log failed answer verification
-                logger.warning(
-                    f"Password reset step 2 failed: incorrect answer for user {user.email}, "
-                    f"question_order {security_question.question_order}"
-                )
-                return Response(
-                    {'error': 'Incorrect answer. Please try again.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            
-            # Answer is correct, reset the password
-            user.set_password(new_password)
-            user.save()
-            
-            return Response(
-                {
-                    'message': 'Password has been reset successfully. You can now login with your new password.',
-                    'success': True,
-                },
-                status=status.HTTP_200_OK,
-            )
-            
-        except serializers.ValidationError as e:
-            # Log failed password reset attempt
-            username_or_email = request.data.get('username_or_email', 'unknown')
-            logger.warning(f"Password reset step 2 validation failed for: {username_or_email}")
-            raise
-        except Exception as e:
-            # Log detailed error server-side
-            logger.error(f"Password reset step 2 error: {str(e)}", exc_info=True)
-            return Response(
-                {'error': 'An error occurred. Please try again.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1681,9 +1449,17 @@ class ProfileAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         
+        # Handle both JSON and multipart/form-data (for file uploads)
+        data = request.data.copy()
+        files = request.FILES.copy() if hasattr(request, 'FILES') else {}
+        
+        # Merge files into data for serializer
+        if 'llc_certificate' in files:
+            data['llc_certificate'] = files['llc_certificate']
+        
         # Update allowed fields only
-        allowed_fields = ['first_name', 'last_name', 'email']
-        update_data = {k: v for k, v in request.data.items() if k in allowed_fields}
+        allowed_fields = ['first_name', 'last_name', 'email', 'business_type', 'ein_number', 'llc_certificate']
+        update_data = {k: v for k, v in data.items() if k in allowed_fields}
         
         # Validate email uniqueness if email is being changed
         if 'email' in update_data and update_data['email'] != user.email:
@@ -1693,9 +1469,37 @@ class ProfileAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         
+        # Validate EIN number format if provided
+        if 'ein_number' in update_data and update_data['ein_number']:
+            import re
+            ein_value = update_data['ein_number'].strip()
+            if ein_value and not re.match(r'^\d{2}-\d{7}$', ein_value):
+                return Response(
+                    {'ein_number': ['EIN number must be in format XX-XXXXXXX (e.g., 12-3456789).']},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            update_data['ein_number'] = ein_value if ein_value else None
+        
+        # Validate business_type if provided
+        if 'business_type' in update_data:
+            valid_types = [choice[0] for choice in User.BUSINESS_TYPE_CHOICES]
+            if update_data['business_type'] not in valid_types:
+                return Response(
+                    {'business_type': ['Invalid business type selected.']},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        
         # Update user
         for field, value in update_data.items():
-            setattr(user, field, value)
+            if field == 'llc_certificate' and value:
+                # Handle file upload - store original filename
+                user.llc_certificate = value
+                # Store the original filename
+                if hasattr(value, 'name'):
+                    user.llc_certificate_name = value.name
+            elif field != 'llc_certificate':
+                setattr(user, field, value)
+        
         user.save()
         
         serializer = UserProfileSerializer(user, context={'request': request})

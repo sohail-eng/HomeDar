@@ -19,6 +19,9 @@ function Signup() {
     email: '',
     password: '',
     confirmPassword: '',
+    business_type: '',
+    ein_number: '',
+    llc_certificate: null,
   })
 
   const [errors, setErrors] = useState({})
@@ -172,6 +175,29 @@ function Signup() {
     return null
   }
 
+  const validateBusinessType = (value) => {
+    if (!value || !value.trim()) {
+      return 'Business type is required'
+    }
+    const validTypes = ['s_corp', 'c_corp', 'llc', 'self_employed', 'other']
+    if (!validTypes.includes(value)) {
+      return 'Please select a valid business type'
+    }
+    return null
+  }
+
+  const validateEinNumber = (value) => {
+    if (!value || !value.trim()) {
+      return null // Optional field
+    }
+    const trimmed = value.trim()
+    // Format: XX-XXXXXXX (2 digits, hyphen, 7 digits)
+    if (!/^\d{2}-\d{7}$/.test(trimmed)) {
+      return 'EIN number must be in format XX-XXXXXXX (e.g., 12-3456789)'
+    }
+    return null
+  }
+
   // Handle input change
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -220,6 +246,13 @@ function Signup() {
     )
     if (confirmPasswordError) newErrors.confirmPassword = confirmPasswordError
 
+    // Validate business fields
+    const businessTypeError = validateBusinessType(formData.business_type)
+    if (businessTypeError) newErrors.business_type = businessTypeError
+
+    const einNumberError = validateEinNumber(formData.ein_number)
+    if (einNumberError) newErrors.ein_number = einNumberError
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -233,13 +266,34 @@ function Signup() {
       formData.email.trim() &&
       formData.password &&
       formData.confirmPassword &&
+      formData.business_type &&
       !validateFirstName(formData.first_name) &&
       !validateLastName(formData.last_name) &&
       !validateUsername(formData.username) &&
       !validateEmail(formData.email) &&
       !validatePassword(formData.password) &&
-      !validateConfirmPassword(formData.confirmPassword, formData.password)
+      !validateConfirmPassword(formData.confirmPassword, formData.password) &&
+      !validateBusinessType(formData.business_type) &&
+      !validateEinNumber(formData.ein_number)
     )
+  }
+
+  // Handle file upload
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      setFormData((prev) => ({
+        ...prev,
+        llc_certificate: file,
+      }))
+      // Clear error if any
+      if (errors.llc_certificate) {
+        setErrors((prev) => ({
+          ...prev,
+          llc_certificate: null,
+        }))
+      }
+    }
   }
 
   const handleCodeChange = (e) => {
@@ -274,6 +328,8 @@ function Signup() {
         username: formData.username.trim(),
         email: formData.email.trim().toLowerCase(),
         password: formData.password,
+        business_type: formData.business_type,
+        ein_number: formData.ein_number.trim() || null,
       }
 
       const result = await requestSignupCode(signupData)
@@ -328,6 +384,9 @@ function Signup() {
         password: formData.password,
         visitor_id: visitorId,
         code: code.trim(),
+        business_type: formData.business_type,
+        ein_number: formData.ein_number.trim() || null,
+        llc_certificate: formData.llc_certificate,
       }
 
       const result = await verifySignupCode(payload)
@@ -497,6 +556,75 @@ function Signup() {
             disabled={isSubmitting}
             placeholder="Confirm your password"
           />
+
+          {/* Business Type Field */}
+          <div>
+            <label htmlFor="business_type" className="block text-sm font-medium text-neutral-700 mb-1">
+              What kind of business is it? <span className="text-error-500">*</span>
+            </label>
+            <select
+              id="business_type"
+              name="business_type"
+              value={formData.business_type}
+              onChange={handleChange}
+              disabled={isSubmitting}
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+                errors.business_type ? 'border-error-500' : 'border-neutral-300'
+              } ${isSubmitting ? 'bg-neutral-100 cursor-not-allowed' : 'bg-white'}`}
+            >
+              <option value="">Select business type</option>
+              <option value="s_corp">S-Corp</option>
+              <option value="c_corp">C-Corp</option>
+              <option value="llc">LLC</option>
+              <option value="self_employed">Self Employed</option>
+              <option value="other">Other</option>
+            </select>
+            {errors.business_type && (
+              <p className="mt-1 text-sm text-error-500">{errors.business_type}</p>
+            )}
+          </div>
+
+          {/* EIN Number Field */}
+          <Input
+            type="text"
+            name="ein_number"
+            label="EIN Number"
+            value={formData.ein_number}
+            onChange={handleChange}
+            error={errors.ein_number}
+            disabled={isSubmitting}
+            placeholder="XX-XXXXXXX"
+            helperText="Optional: Format XX-XXXXXXX (e.g., 12-3456789)"
+          />
+
+          {/* LLC Certificate File Upload */}
+          <div>
+            <label htmlFor="llc_certificate" className="block text-sm font-medium text-neutral-700 mb-1">
+              LLC Certificate
+            </label>
+            <input
+              id="llc_certificate"
+              type="file"
+              name="llc_certificate"
+              onChange={handleFileChange}
+              disabled={isSubmitting}
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+                errors.llc_certificate ? 'border-error-500' : 'border-neutral-300'
+              } ${isSubmitting ? 'bg-neutral-100 cursor-not-allowed' : 'bg-white'}`}
+            />
+            {formData.llc_certificate && (
+              <p className="mt-1 text-sm text-neutral-600">
+                Selected: {formData.llc_certificate.name}
+              </p>
+            )}
+            {errors.llc_certificate && (
+              <p className="mt-1 text-sm text-error-500">{errors.llc_certificate}</p>
+            )}
+            <p className="mt-1 text-xs text-neutral-500">
+              Optional: Upload your LLC certificate (PDF, DOC, DOCX, JPG, PNG)
+            </p>
+          </div>
 
           {/* OTP Step 2: Verification Code */}
           {step === 2 && (

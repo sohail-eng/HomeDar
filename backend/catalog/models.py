@@ -22,6 +22,17 @@ class TimeStampedModel(models.Model):
         abstract = True
 
 
+def llc_certificate_upload_to(instance, filename):
+    """
+    Generate UUID-based filename for LLC certificate uploads.
+    Returns path like: user_documents/llc_certificates/{uuid}.{ext}
+    """
+    import os
+    file_ext = os.path.splitext(filename)[1]
+    uuid_filename = f"{uuid.uuid4()}{file_ext}"
+    return f"user_documents/llc_certificates/{uuid_filename}"
+
+
 class Category(TimeStampedModel):
     """Category model for product categorization."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -453,6 +464,14 @@ class User(TimeStampedModel):
     of tracking data (product views, likes, etc.).
     """
     
+    BUSINESS_TYPE_CHOICES = [
+        ('s_corp', 'S-Corp'),
+        ('c_corp', 'C-Corp'),
+        ('llc', 'LLC'),
+        ('self_employed', 'Self Employed'),
+        ('other', 'Other'),
+    ]
+    
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -489,6 +508,30 @@ class User(TimeStampedModel):
         blank=True,
         related_name='user',
         help_text="Linked visitor profile for cross-device tracking synchronization.",
+    )
+    business_type = models.CharField(
+        max_length=20,
+        choices=BUSINESS_TYPE_CHOICES,
+        default='other',
+        help_text="Type of business entity.",
+    )
+    ein_number = models.CharField(
+        max_length=12,
+        blank=True,
+        null=True,
+        help_text="Employer Identification Number (EIN) in format XX-XXXXXXX.",
+    )
+    llc_certificate = models.FileField(
+        upload_to=llc_certificate_upload_to,
+        blank=True,
+        null=True,
+        help_text="LLC certificate document (optional).",
+    )
+    llc_certificate_name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Original filename of the LLC certificate document.",
     )
     
     class Meta:
@@ -537,70 +580,6 @@ class User(TimeStampedModel):
         # If password is provided and not already hashed, hash it
         if self.password and not self.password.startswith('pbkdf2_') and not self.password.startswith('bcrypt'):
             self.set_password(self.password)
-        super().save(*args, **kwargs)
-
-
-class SecurityQuestion(TimeStampedModel):
-    """
-    Security questions for password recovery.
-    
-    Each user must have exactly 3 security questions (enforced by unique_together).
-    Answers are stored as hashes for security.
-    """
-    
-    id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False,
-    )
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='security_questions',
-        help_text="User who owns this security question.",
-    )
-    question_text = models.CharField(
-        max_length=255,
-        help_text="The security question text.",
-    )
-    answer_hash = models.CharField(
-        max_length=255,
-        help_text="Hashed answer to the security question (never store plain text).",
-    )
-    question_order = models.IntegerField(
-        choices=[(1, 'Question 1'), (2, 'Question 2'), (3, 'Question 3')],
-        help_text="Order of this question (1, 2, or 3). Each user must have exactly 3 questions.",
-    )
-    
-    class Meta:
-        verbose_name = "Security Question"
-        verbose_name_plural = "Security Questions"
-        unique_together = [['user', 'question_order']]
-        indexes = [
-            models.Index(fields=['user', 'question_order']),
-        ]
-    
-    def __str__(self) -> str:
-        return f"{self.user.username} - Question {self.question_order}"
-    
-    def set_answer(self, raw_answer: str) -> None:
-        """Hash and set the security question answer."""
-        # Normalize answer (trim whitespace, lowercase) for consistency
-        normalized_answer = raw_answer.strip().lower()
-        self.answer_hash = make_password(normalized_answer)
-    
-    def check_answer(self, raw_answer: str) -> bool:
-        """Check if the provided answer matches the stored hash."""
-        # Normalize answer for comparison
-        normalized_answer = raw_answer.strip().lower()
-        return check_password(normalized_answer, self.answer_hash)
-    
-    def save(self, *args, **kwargs):
-        """Override save to ensure answer is hashed if it's not already."""
-        # If answer_hash looks like plain text, hash it
-        # Note: This assumes answer_hash is set via set_answer() method
-        # If answer_hash is provided directly and not hashed, we can't detect it
-        # So it's better to always use set_answer() method
         super().save(*args, **kwargs)
 
 

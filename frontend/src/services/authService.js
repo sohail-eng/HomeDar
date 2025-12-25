@@ -240,10 +240,37 @@ export const requestSignupCode = async (userData) => {
 /**
  * Verify signup OTP code and complete account creation.
  * Uses: POST /auth/signup/verify-code/
+ * Handles file uploads using FormData when llc_certificate is present.
  */
 export const verifySignupCode = async (payload) => {
   try {
-    const response = await api.post('/auth/signup/verify-code/', payload)
+    // Check if there's a file to upload
+    const hasFile = payload.llc_certificate && payload.llc_certificate instanceof File
+    
+    let response
+    if (hasFile) {
+      // Use FormData for file uploads
+      const formData = new FormData()
+      
+      // Add all fields to FormData
+      Object.keys(payload).forEach((key) => {
+        if (key === 'llc_certificate' && payload[key] instanceof File) {
+          formData.append(key, payload[key])
+        } else if (payload[key] !== null && payload[key] !== undefined) {
+          formData.append(key, payload[key])
+        }
+      })
+      
+      // Make request with FormData (axios will set Content-Type to multipart/form-data)
+      response = await api.post('/auth/signup/verify-code/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+    } else {
+      // Regular JSON request
+      response = await api.post('/auth/signup/verify-code/', payload)
+    }
 
     const { user, access, refresh, visitor_id } = response.data
 
@@ -506,11 +533,40 @@ export const getProfile = async () => {
  * @param {string} data.first_name - Optional first name
  * @param {string} data.last_name - Optional last name
  * @param {string} data.email - Optional email
+ * @param {string} data.business_type - Optional business type
+ * @param {string} data.ein_number - Optional EIN number
+ * @param {File} data.llc_certificate - Optional LLC certificate file
  * @returns {Promise} Promise that resolves to { success, data: { user }, error }
  */
 export const updateProfile = async (data) => {
   try {
-    const response = await api.patch('/auth/profile/', data)
+    // Check if there's a file to upload
+    const hasFile = data.llc_certificate && data.llc_certificate instanceof File
+    
+    let response
+    if (hasFile) {
+      // Use FormData for file uploads
+      const formData = new FormData()
+      
+      // Add all fields to FormData
+      Object.keys(data).forEach((key) => {
+        if (key === 'llc_certificate' && data[key] instanceof File) {
+          formData.append(key, data[key])
+        } else if (data[key] !== null && data[key] !== undefined && data[key] !== '') {
+          formData.append(key, data[key])
+        }
+      })
+      
+      // Make request with FormData
+      response = await api.patch('/auth/profile/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+    } else {
+      // Regular JSON request
+      response = await api.patch('/auth/profile/', data)
+    }
     
     const user = response.data
     
@@ -525,10 +581,40 @@ export const updateProfile = async (data) => {
       error: null,
     }
   } catch (error) {
+    let fieldErrors = null
+    let generalError = null
+
+    if (error.response?.data && typeof error.response.data === 'object') {
+      const responseData = error.response.data
+      
+      if (responseData.detail) {
+        generalError = Array.isArray(responseData.detail) ? responseData.detail[0] : responseData.detail
+      } else if (responseData.error) {
+        generalError = Array.isArray(responseData.error) ? responseData.error[0] : responseData.error
+      }
+      
+      // Extract field-specific errors
+      const fieldKeys = Object.keys(responseData).filter(
+        key => !['detail', 'error', 'message'].includes(key.toLowerCase())
+      )
+      
+      if (fieldKeys.length > 0) {
+        fieldErrors = {}
+        fieldKeys.forEach((field) => {
+          if (Array.isArray(responseData[field]) && responseData[field].length > 0) {
+            fieldErrors[field] = responseData[field][0]
+          } else if (typeof responseData[field] === 'string' && responseData[field].trim()) {
+            fieldErrors[field] = responseData[field]
+          }
+        })
+      }
+    }
+    
     return {
       success: false,
       data: null,
-      error: handleApiError(error),
+      error: generalError || handleApiError(error),
+      fieldErrors,
     }
   }
 }

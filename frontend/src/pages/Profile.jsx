@@ -21,10 +21,16 @@ function Profile() {
     first_name: '',
     last_name: '',
     visitor_id: null,
+    business_type: '',
+    ein_number: '',
+    llc_certificate: null,
+    llc_certificate_url: null,
+    llc_certificate_name: null,
     created_at: '',
     updated_at: '',
   })
   const [originalData, setOriginalData] = useState(null)
+  const [newCertificateFile, setNewCertificateFile] = useState(null)
   const [errors, setErrors] = useState({})
   const [submitError, setSubmitError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
@@ -61,6 +67,11 @@ function Profile() {
             first_name: contextUser.first_name || '',
             last_name: contextUser.last_name || '',
             visitor_id: contextUser.visitor_id || null,
+            business_type: contextUser.business_type || '',
+            ein_number: contextUser.ein_number || '',
+            llc_certificate: null,
+            llc_certificate_url: contextUser.llc_certificate_url || null,
+            llc_certificate_name: contextUser.llc_certificate_name || null,
             created_at: contextUser.created_at || '',
             updated_at: contextUser.updated_at || '',
           })
@@ -70,6 +81,11 @@ function Profile() {
             first_name: contextUser.first_name || '',
             last_name: contextUser.last_name || '',
             visitor_id: contextUser.visitor_id || null,
+            business_type: contextUser.business_type || '',
+            ein_number: contextUser.ein_number || '',
+            llc_certificate: null,
+            llc_certificate_url: contextUser.llc_certificate_url || null,
+            llc_certificate_name: contextUser.llc_certificate_name || null,
             created_at: contextUser.created_at || '',
             updated_at: contextUser.updated_at || '',
           })
@@ -84,6 +100,11 @@ function Profile() {
               first_name: userData.first_name || '',
               last_name: userData.last_name || '',
               visitor_id: userData.visitor_id || null,
+              business_type: userData.business_type || '',
+              ein_number: userData.ein_number || '',
+              llc_certificate: null,
+              llc_certificate_url: userData.llc_certificate_url || null,
+              llc_certificate_name: userData.llc_certificate_name || null,
               created_at: userData.created_at || '',
               updated_at: userData.updated_at || '',
             })
@@ -93,6 +114,11 @@ function Profile() {
               first_name: userData.first_name || '',
               last_name: userData.last_name || '',
               visitor_id: userData.visitor_id || null,
+              business_type: userData.business_type || '',
+              ein_number: userData.ein_number || '',
+              llc_certificate: null,
+              llc_certificate_url: userData.llc_certificate_url || null,
+              llc_certificate_name: userData.llc_certificate_name || null,
               created_at: userData.created_at || '',
               updated_at: userData.updated_at || '',
             })
@@ -147,6 +173,29 @@ function Profile() {
     return null
   }
 
+  const validateBusinessType = (value) => {
+    if (!value || !value.trim()) {
+      return 'Business type is required'
+    }
+    const validTypes = ['s_corp', 'c_corp', 'llc', 'self_employed', 'other']
+    if (!validTypes.includes(value)) {
+      return 'Please select a valid business type'
+    }
+    return null
+  }
+
+  const validateEinNumber = (value) => {
+    if (!value || !value.trim()) {
+      return null // Optional field
+    }
+    const trimmed = value.trim()
+    // Format: XX-XXXXXXX (2 digits, hyphen, 7 digits)
+    if (!/^\d{2}-\d{7}$/.test(trimmed)) {
+      return 'EIN number must be in format XX-XXXXXXX (e.g., 12-3456789)'
+    }
+    return null
+  }
+
   const validateForm = () => {
     const newErrors = {}
 
@@ -157,6 +206,12 @@ function Profile() {
 
     const lastNameError = validateLastName(formData.last_name)
     if (lastNameError) newErrors.last_name = lastNameError
+
+    const businessTypeError = validateBusinessType(formData.business_type)
+    if (businessTypeError) newErrors.business_type = businessTypeError
+
+    const einNumberError = validateEinNumber(formData.ein_number)
+    if (einNumberError) newErrors.ein_number = einNumberError
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -184,6 +239,28 @@ function Profile() {
     }
   }
 
+  // Handle file upload
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      setNewCertificateFile(file)
+      // Clear error if any
+      if (errors.llc_certificate) {
+        setErrors((prev) => ({
+          ...prev,
+          llc_certificate: null,
+        }))
+      }
+    }
+  }
+
+  // Handle download certificate
+  const handleDownloadCertificate = () => {
+    if (formData.llc_certificate_url) {
+      window.open(formData.llc_certificate_url, '_blank')
+    }
+  }
+
   // Handle edit click
   const handleEditClick = () => {
     // Store current data as original
@@ -200,6 +277,7 @@ function Profile() {
     if (originalData) {
       setFormData({ ...originalData })
     }
+    setNewCertificateFile(null)
     setIsEditMode(false)
     setErrors({})
     setSubmitError('')
@@ -227,9 +305,18 @@ function Profile() {
       if (formData.last_name !== originalData.last_name) {
         updateData.last_name = formData.last_name.trim()
       }
+      if (formData.business_type !== originalData.business_type) {
+        updateData.business_type = formData.business_type
+      }
+      if (formData.ein_number !== originalData.ein_number) {
+        updateData.ein_number = formData.ein_number.trim() || null
+      }
+      if (newCertificateFile) {
+        updateData.llc_certificate = newCertificateFile
+      }
 
       // If no changes, just exit edit mode
-      if (Object.keys(updateData).length === 0) {
+      if (Object.keys(updateData).length === 0 && !newCertificateFile) {
         setIsEditMode(false)
         setIsLoading(false)
         return
@@ -250,6 +337,11 @@ function Profile() {
           first_name: updatedUser.first_name || formData.first_name,
           last_name: updatedUser.last_name || formData.last_name,
           visitor_id: updatedUser.visitor_id || formData.visitor_id,
+          business_type: updatedUser.business_type || formData.business_type,
+          ein_number: updatedUser.ein_number || formData.ein_number,
+          llc_certificate: null,
+          llc_certificate_url: updatedUser.llc_certificate_url || formData.llc_certificate_url,
+          llc_certificate_name: updatedUser.llc_certificate_name || formData.llc_certificate_name,
           created_at: updatedUser.created_at || formData.created_at,
           updated_at: updatedUser.updated_at || formData.updated_at,
         })
@@ -259,9 +351,17 @@ function Profile() {
           first_name: updatedUser.first_name || formData.first_name,
           last_name: updatedUser.last_name || formData.last_name,
           visitor_id: updatedUser.visitor_id || formData.visitor_id,
+          business_type: updatedUser.business_type || formData.business_type,
+          ein_number: updatedUser.ein_number || formData.ein_number,
+          llc_certificate: null,
+          llc_certificate_url: updatedUser.llc_certificate_url || formData.llc_certificate_url,
+          llc_certificate_name: updatedUser.llc_certificate_name || formData.llc_certificate_name,
           created_at: updatedUser.created_at || formData.created_at,
           updated_at: updatedUser.updated_at || formData.updated_at,
         })
+
+        // Clear new certificate file
+        setNewCertificateFile(null)
 
         // Show success message
         setSuccessMessage('Profile updated successfully!')
@@ -269,7 +369,10 @@ function Profile() {
         // Exit edit mode
         setIsEditMode(false)
       } else {
-        // Display error message
+        // Display error message or field errors
+        if (result.fieldErrors) {
+          setErrors(result.fieldErrors)
+        }
         setSubmitError(result.error || 'Failed to update profile. Please try again.')
       }
     } catch (error) {
@@ -398,6 +501,123 @@ function Profile() {
             disabled={!isEditMode || isLoading}
             placeholder="Enter your last name"
           />
+        </div>
+
+        {/* Business Type - Editable in edit mode */}
+        <div>
+          <label htmlFor="business_type" className="block text-sm font-medium text-neutral-700 mb-1">
+            What kind of business is it? <span className="text-error-500">*</span>
+          </label>
+          <select
+            id="business_type"
+            name="business_type"
+            value={formData.business_type}
+            onChange={handleChange}
+            disabled={!isEditMode || isLoading}
+            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+              errors.business_type ? 'border-error-500' : 'border-neutral-300'
+            } ${!isEditMode || isLoading ? 'bg-neutral-100 cursor-not-allowed' : 'bg-white'}`}
+          >
+            <option value="">Select business type</option>
+            <option value="s_corp">S-Corp</option>
+            <option value="c_corp">C-Corp</option>
+            <option value="llc">LLC</option>
+            <option value="self_employed">Self Employed</option>
+            <option value="other">Other</option>
+          </select>
+          {errors.business_type && (
+            <p className="mt-1 text-sm text-error-500">{errors.business_type}</p>
+          )}
+        </div>
+
+        {/* EIN Number - Editable in edit mode */}
+        <div>
+          <Input
+            type="text"
+            name="ein_number"
+            label="EIN Number"
+            value={formData.ein_number}
+            onChange={handleChange}
+            error={errors.ein_number}
+            disabled={!isEditMode || isLoading}
+            placeholder="XX-XXXXXXX"
+            helperText="Optional: Format XX-XXXXXXX (e.g., 12-3456789)"
+          />
+        </div>
+
+        {/* LLC Certificate - Editable in edit mode */}
+        <div>
+          <label htmlFor="llc_certificate" className="block text-sm font-medium text-neutral-700 mb-1">
+            LLC Certificate
+          </label>
+          
+          {/* Show existing certificate if available */}
+          {formData.llc_certificate_url && !newCertificateFile && (
+            <div className="mb-3 p-3 bg-neutral-50 border border-neutral-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-neutral-700">
+                      {formData.llc_certificate_name || 'Certificate uploaded'}
+                    </span>
+                    <span className="text-xs text-neutral-500">Click download to view</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadCertificate}
+                  className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                  disabled={isLoading}
+                >
+                  Download
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Show new file name if selected */}
+          {newCertificateFile && (
+            <div className="mb-3 p-3 bg-primary-50 border border-primary-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-sm text-neutral-700">New file: {newCertificateFile.name}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNewCertificateFile(null)}
+                  className="text-sm text-error-600 hover:text-error-700 font-medium"
+                  disabled={isLoading}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* File input */}
+          <input
+            id="llc_certificate"
+            type="file"
+            name="llc_certificate"
+            onChange={handleFileChange}
+            disabled={!isEditMode || isLoading}
+            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+              errors.llc_certificate ? 'border-error-500' : 'border-neutral-300'
+            } ${!isEditMode || isLoading ? 'bg-neutral-100 cursor-not-allowed' : 'bg-white'}`}
+          />
+          {errors.llc_certificate && (
+            <p className="mt-1 text-sm text-error-500">{errors.llc_certificate}</p>
+          )}
+          <p className="mt-1 text-xs text-neutral-500">
+            Optional: Upload your LLC certificate (PDF, DOC, DOCX, JPG, PNG)
+          </p>
         </div>
 
         {/* Account Created Date - Read-only */}

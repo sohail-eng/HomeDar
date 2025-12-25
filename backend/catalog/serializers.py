@@ -14,7 +14,6 @@ from .models import (
     ProductLike,
     ProductReview,
     User,
-    SecurityQuestion,
     VisitorProfile,
 )
 
@@ -336,57 +335,12 @@ class ProductReviewCreateSerializer(serializers.Serializer):
 # Authentication Serializers
 # ============================================================================
 
-class SecurityQuestionSerializer(serializers.Serializer):
-    """
-    Serializer for security question data during signup.
-    
-    Accepts:
-    - question_text (required, string, max 255 chars)
-    - answer (required, string, max 100 chars) - will be hashed
-    - question_order (required, integer: 1, 2, or 3)
-    """
-    
-    question_text = serializers.CharField(max_length=255, required=True)
-    answer = serializers.CharField(required=True, write_only=True, max_length=100)
-    question_order = serializers.IntegerField(required=True)
-    
-    def validate_question_order(self, value):
-        """Ensure question_order is 1, 2, or 3."""
-        if value not in [1, 2, 3]:
-            raise serializers.ValidationError("Question order must be 1, 2, or 3.")
-        return value
-    
-    def validate_question_text(self, value):
-        """Validate and sanitize question text."""
-        if not value or not value.strip():
-            raise serializers.ValidationError("Question text cannot be empty.")
-        value = value.strip()
-        if len(value) > 255:
-            raise serializers.ValidationError("Question text must be at most 255 characters long.")
-        return value
-    
-    def validate_answer(self, value):
-        """Validate and sanitize answer."""
-        if not value or not value.strip():
-            raise serializers.ValidationError("Answer cannot be empty.")
-        value = value.strip()
-        if len(value) > 100:
-            raise serializers.ValidationError("Answer must be at most 100 characters long.")
-        return value
-
-
 class UserSignupSerializer(serializers.Serializer):
     """
-    Serializer for user signup.
+    Serializer for user signup (deprecated - use OTP-based signup instead).
     
-    Accepts:
-    - first_name (required)
-    - last_name (required)
-    - username (required, unique)
-    - email (required, unique, valid format)
-    - password (required, will be validated for strength)
-    - visitor_id (optional, UUID string)
-    - security_questions (required, array of 3 SecurityQuestionSerializer objects)
+    This serializer is kept for backward compatibility but the endpoint should use
+    SignupRequestCodeSerializer and SignupVerifyCodeSerializer instead.
     """
     
     first_name = serializers.CharField(max_length=100, required=True)
@@ -407,7 +361,6 @@ class UserSignupSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True, required=True, min_length=8)
     visitor_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    security_questions = SecurityQuestionSerializer(many=True, required=True)
     
     def validate_username(self, value):
         """Validate username format, uniqueness, and sanitize."""
@@ -566,18 +519,34 @@ class UserLoginSerializer(serializers.Serializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for user profile (read-only fields for id, username, visitor_id, timestamps).
+    Includes business information fields.
     """
     visitor_id = serializers.SerializerMethodField()
+    llc_certificate_url = serializers.SerializerMethodField()
+    business_type_display = serializers.CharField(source='get_business_type_display', read_only=True)
     
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'visitor_id', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'username', 'visitor_id', 'created_at', 'updated_at']
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 'visitor_id',
+            'business_type', 'business_type_display', 'ein_number', 'llc_certificate', 'llc_certificate_url',
+            'llc_certificate_name', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'username', 'visitor_id', 'created_at', 'updated_at', 'llc_certificate_url', 'business_type_display', 'llc_certificate_name']
     
     def get_visitor_id(self, obj):
         """Return visitor_id if visitor is linked."""
         if obj.visitor:
             return obj.visitor.visitor_id
+        return None
+    
+    def get_llc_certificate_url(self, obj):
+        """Return the full URL for the LLC certificate file."""
+        if obj.llc_certificate:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.llc_certificate.url)
+            return obj.llc_certificate.url
         return None
 
 
@@ -588,6 +557,8 @@ class SignupRequestCodeSerializer(serializers.Serializer):
     Accepts:
     - first_name, last_name, username, email, password (same validations as UserSignupSerializer)
     - visitor_id (optional)
+    - business_type (required)
+    - ein_number (optional)
     """
 
     first_name = serializers.CharField(max_length=100, required=True)
@@ -596,6 +567,11 @@ class SignupRequestCodeSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True, required=True, min_length=8)
     visitor_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    business_type = serializers.ChoiceField(
+        choices=User.BUSINESS_TYPE_CHOICES,
+        required=True,
+    )
+    ein_number = serializers.CharField(max_length=12, required=False, allow_blank=True, allow_null=True)
 
     # Reuse validation logic from UserSignupSerializer where possible
     validate_first_name = UserSignupSerializer.validate_first_name
@@ -605,6 +581,17 @@ class SignupRequestCodeSerializer(serializers.Serializer):
     validate_password = UserSignupSerializer.validate_password
     validate_visitor_id = UserSignupSerializer.validate_visitor_id
 
+    def validate_ein_number(self, value):
+        """Validate EIN format: XX-XXXXXXX"""
+        if not value or not value.strip():
+            return None  # Optional field, allow empty
+        
+        value = value.strip()
+        import re
+        if not re.match(r'^\d{2}-\d{7}$', value):
+            raise serializers.ValidationError("EIN number must be in format XX-XXXXXXX (e.g., 12-3456789).")
+        return value
+
 
 class SignupVerifyCodeSerializer(serializers.Serializer):
     """
@@ -613,6 +600,9 @@ class SignupVerifyCodeSerializer(serializers.Serializer):
     Accepts:
     - first_name, last_name, username, email, password, visitor_id
     - code (required, 4-digit string)
+    - business_type (required)
+    - ein_number (optional)
+    - llc_certificate (optional file upload)
     """
 
     first_name = serializers.CharField(max_length=100, required=True)
@@ -622,6 +612,12 @@ class SignupVerifyCodeSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, required=True, min_length=8)
     visitor_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     code = serializers.CharField(required=True, max_length=4)
+    business_type = serializers.ChoiceField(
+        choices=User.BUSINESS_TYPE_CHOICES,
+        required=True,
+    )
+    ein_number = serializers.CharField(max_length=12, required=False, allow_blank=True, allow_null=True)
+    llc_certificate = serializers.FileField(required=False, allow_null=True)
 
     # Reuse logic from UserSignupSerializer
     validate_first_name = UserSignupSerializer.validate_first_name
@@ -637,93 +633,18 @@ class SignupVerifyCodeSerializer(serializers.Serializer):
             raise serializers.ValidationError("Code must be a 4-digit number.")
         return value
 
-
-class ForgotPasswordStep1Serializer(serializers.Serializer):
-    """
-    Serializer for forgot password step 1 (username or email validation).
-    
-    Accepts:
-    - username_or_email (required) - can be either username or email
-    """
-    
-    username_or_email = serializers.CharField(required=True)
-    
-    def validate_username_or_email(self, value):
-        """Validate username or email exists in database."""
+    def validate_ein_number(self, value):
+        """Validate EIN format: XX-XXXXXXX"""
+        if not value or not value.strip():
+            return None  # Optional field, allow empty
+        
         value = value.strip()
-        
-        # Try to find user by username or email
-        try:
-            user = User.objects.get(username=value)
-            self.context['user'] = user
-        except User.DoesNotExist:
-            try:
-                user = User.objects.get(email=value.lower())
-                self.context['user'] = user
-            except User.DoesNotExist:
-                raise serializers.ValidationError("No user found with this username or email address.")
-        
-        return value
-
-
-class ForgotPasswordStep2Serializer(serializers.Serializer):
-    """
-    Serializer for forgot password step 2 (answer verification and password reset).
-    
-    Accepts:
-    - email or username (required) - can be either username or email
-    - question_order (required, integer: 1, 2, or 3)
-    - answer (required, string)
-    - password (required, string) - new password to set
-    """
-    
-    username_or_email = serializers.CharField(required=True)
-    question_order = serializers.IntegerField(required=True)
-    answer = serializers.CharField(required=True)
-    password = serializers.CharField(required=True, min_length=8, write_only=True)
-    
-    def validate_question_order(self, value):
-        """Ensure question_order is 1, 2, or 3."""
-        if value not in [1, 2, 3]:
-            raise serializers.ValidationError("Question order must be 1, 2, or 3.")
-        return value
-    
-    def validate_password(self, value):
-        """Validate password strength."""
-        if not value or len(value.strip()) < 8:
-            raise serializers.ValidationError("Password must be at least 8 characters long.")
-        
-        # Check for at least one letter and one number
         import re
-        if not re.search(r'[a-zA-Z]', value):
-            raise serializers.ValidationError("Password must contain at least one letter.")
-        if not re.search(r'[0-9]', value):
-            raise serializers.ValidationError("Password must contain at least one number.")
-        
+        if not re.match(r'^\d{2}-\d{7}$', value):
+            raise serializers.ValidationError("EIN number must be in format XX-XXXXXXX (e.g., 12-3456789).")
         return value
-    
-    def validate(self, attrs):
-        """Validate username_or_email exists and get security question."""
-        username_or_email = attrs.get('username_or_email', '').strip()
-        question_order = attrs.get('question_order')
-        
-        # Try to find user by username or email
-        try:
-            user = User.objects.get(username=username_or_email)
-        except User.DoesNotExist:
-            try:
-                user = User.objects.get(email=username_or_email.lower())
-            except User.DoesNotExist:
-                raise serializers.ValidationError({"username_or_email": "No user found with this username or email address."})
-        
-        try:
-            security_question = SecurityQuestion.objects.get(user=user, question_order=question_order)
-            attrs['user'] = user
-            attrs['security_question'] = security_question
-        except SecurityQuestion.DoesNotExist:
-            raise serializers.ValidationError({"question_order": "Security question not found for this user."})
-        
-        return attrs
+
+
 
 
 class PasswordResetRequestCodeSerializer(serializers.Serializer):
@@ -773,8 +694,18 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         return value
 
     def validate_password(self, value):
-        # Reuse password strength rules from ForgotPasswordStep2Serializer
-        return ForgotPasswordStep2Serializer.validate_password(self, value)
+        """Validate password strength."""
+        if not value or len(value.strip()) < 8:
+            raise serializers.ValidationError("Password must be at least 8 characters long.")
+        
+        # Check for at least one letter and one number
+        import re
+        if not re.search(r'[a-zA-Z]', value):
+            raise serializers.ValidationError("Password must contain at least one letter.")
+        if not re.search(r'[0-9]', value):
+            raise serializers.ValidationError("Password must contain at least one number.")
+        
+        return value
 
     def validate(self, attrs):
         username_or_email = attrs.get("username_or_email", "").strip()
